@@ -1,5 +1,5 @@
 ! (C) Copyright 2000- ECMWF.
-! (C) Copyright 2000- Meteo-France.
+! (C) Copyright 2013- Meteo-France.
 ! 
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
@@ -52,13 +52,13 @@ SUBROUTINE FTDIR_CTL(KF_UV_G,KF_SCALARS_G,KF_GP,KF_FS, &
 !     Modifications.
 !     --------------
 !        Original : 00-03-03
-!        R. El Khatib 09-Sep-2020 NSTACK_MEMORY_TR
-!      R. El Khatib 01-Jun-2022 contiguous pointer
+
 !     ------------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
 
-USE TPM_GEN   ,ONLY : NSTACK_MEMORY_TR
+!USE TPM_DIM
+!USE TPM_GEOMETRY
 USE TPM_TRANS       ,ONLY : FOUBUF_IN
 USE TPM_DISTR       ,ONLY : D, MYPROC, NPROC
 
@@ -85,15 +85,16 @@ REAL(KIND=JPRB),OPTIONAL    , INTENT(IN) :: PGP3B(:,:,:,:)
 REAL(KIND=JPRB),OPTIONAL    , INTENT(IN) :: PGP2(:,:,:)
 
 ! Local variables
-REAL(KIND=JPRB),TARGET  :: ZGTF_STACK(KF_FS*MIN(1,MAX(0,NSTACK_MEMORY_TR)),D%NLENGTF)
-REAL(KIND=JPRB),TARGET, ALLOCATABLE :: ZGTF_HEAP(:,:)
-REAL(KIND=JPRB),POINTER, CONTIGUOUS :: ZGTF(:,:)
+!REAL(KIND=JPRB) :: ZGTF(KF_FS,D%NLENGTF)
+REAL(KIND=JPRB) :: PIN(D%NLENGTF,KF_FS)
+REAL(KIND=JPRB) :: ZGTF(KF_FS,D%NLENGTF)
 
-INTEGER(KIND=JPIM) :: IST,JGL,IBLEN
+INTEGER(KIND=JPIM) :: IST,JGL,IGL,IBLEN
 INTEGER(KIND=JPIM) :: IVSETUV(KF_UV_G)
 INTEGER(KIND=JPIM) :: IVSETSC(KF_SCALARS_G)
 INTEGER(KIND=JPIM) :: IVSET(KF_GP)
 INTEGER(KIND=JPIM) :: IFGP2,IFGP3A,IFGP3B,IOFF,J3
+INTEGER(KIND=JPIM) :: IBEG,IEND,IINC
 
 !     ------------------------------------------------------------------
 
@@ -142,23 +143,10 @@ IF(KF_SCALARS_G > 0) THEN
   IST = IST+KF_SCALARS_G
 ENDIF
 
-IF (NSTACK_MEMORY_TR == 1) THEN
-  ZGTF => ZGTF_STACK(:,:)
-ELSE
-  ALLOCATE(ZGTF_HEAP(KF_FS,D%NLENGTF))
-! Now, force the OS to allocate this shared array right now, not when it starts
-! to be used which is an OPEN-MP loop, that would cause a threads
-! synchronization lock :
-  IF (KF_FS > 0 .AND. D%NLENGTF > 0) THEN
-    ZGTF_HEAP(1,1)=HUGE(1._JPRB)
-  ENDIF
-  ZGTF => ZGTF_HEAP(:,:)
-ENDIF
-
 ! Transposition
 
 CALL GSTATS(158,0)
-CALL TRGTOL(ZGTF,KF_FS,KF_GP,KF_SCALARS_G,IVSET,KPTRGP,&
+CALL TRGTOL(PIN,KF_FS,KF_GP,KF_SCALARS_G,IVSET,KPTRGP,&
  &PGP,PGPUV,PGP3A,PGP3B,PGP2)
 CALL GSTATS(158,1)
 CALL GSTATS(106,0)
@@ -175,22 +163,33 @@ ELSE
   ALLOCATE(FOUBUF_IN(MAX(1,IBLEN)))
 ENDIF
 
-CALL GSTATS(1640, 0)
-! If this rank has any Fourier fields, Fourier transform them
-IF (KF_FS > 0) THEN
-  ! Loop over latitudes
-  !$OMP PARALLEL DO SCHEDULE(DYNAMIC,1) PRIVATE(JGL)
-  DO JGL = 1, D%NDGL_FS
-    ! Fourier transform
-    CALL FTDIR(ZGTF, KF_FS, JGL)
-
-    ! Save Fourier data in FOUBUF_IN
-    CALL FOURIER_OUT(ZGTF, KF_FS, JGL)
-  ENDDO
-  !$OMP END PARALLEL DO
+IF(MYPROC > NPROC/2)THEN
+  IBEG=1
+  IEND=D%NDGL_FS
+  IINC=1
+ELSE
+  IBEG=D%NDGL_FS
+  IEND=1
+  IINC=-1
 ENDIF
-CALL GSTATS(1640, 1)
 
+CALL GSTATS(1640,0)
+!$OMP PARALLEL DO SCHEDULE(DYNAMIC,1) PRIVATE(JGL,IGL)
+DO JGL=IBEG,IEND,IINC
+  IGL = JGL
+  IF(KF_FS>0) THEN
+    CALL FTDIR(PIN,ZGTF,KF_FS,IGL)
+  ENDIF
+
+! Save Fourier data in FOUBUF_IN
+
+call gstats(811,0)
+    CALL FOURIER_OUT(ZGTF,KF_FS,IGL)
+call gstats(811,1)
+
+ENDDO
+!$OMP END PARALLEL DO
+CALL GSTATS(1640,1)
 CALL GSTATS(106,1)
 
 !     ------------------------------------------------------------------

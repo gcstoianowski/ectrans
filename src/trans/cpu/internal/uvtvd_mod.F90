@@ -1,5 +1,5 @@
 ! (C) Copyright 1991- ECMWF.
-! (C) Copyright 1991- Meteo-France.
+! (C) Copyright 2013- Meteo-France.
 ! 
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
@@ -90,53 +90,55 @@ REAL(KIND=JPRB) :: ZN(-1:R%NTMAX+3)
 
 ZKM = KM
 ITMAX = R%NTMAX
-ZN(KM-1:ITMAX+3) = REAL(F%RN(KM-1:ITMAX+3),JPRB)
+ZN(KM-1:ITMAX+3) = F%RN(KM-1:ITMAX+3)
 !*       1.1      SET N=KM-1 COMPONENT TO 0 FOR U AND V
 
 IN = F%NLTN(KM-1)
 DO J=1,2*KFIELD
-  PU(IN,J) = 0.0_JPRB
-  PV(IN,J) = 0.0_JPRB
+  PU(J,IN) = 0.0_JPRB
+  PV(J,IN) = 0.0_JPRB
 ENDDO
 
 !*       1.2      COMPUTE VORTICITY AND DIVERGENCE.
 
 IF(KM /= 0) THEN
-  DO JN=KM,ITMAX
-    IN = ITMAX+2-JN
+   DO JN=KM,ITMAX
+      IN = ITMAX+2-JN
+      DO J=1,KFIELD
+         IR = 2*J-1
+         II = IR+1
+
 !DIR$ IVDEP
 !OCL NOVREC
-    DO J=1,KFIELD
-      IR = 2*J-1
-      II = IR+1
-      PVOR(IN,IR) = -ZKM*PV(IN,II)-&
-       &ZN(JN)*PEPSNM(JN+1)*PU(IN-1,IR)+&
-       &ZN(JN+1)*PEPSNM(JN)*PU(IN+1,IR)
-      PVOR(IN,II) = +ZKM*PV(IN,IR)-&
-       &ZN(JN)*PEPSNM(JN+1)*PU(IN-1,II)+&
-       &ZN(JN+1)*PEPSNM(JN)*PU(IN+1,II)
-      PDIV(IN,IR) = -ZKM*PU(IN,II)+&
-       &ZN(JN)*PEPSNM(JN+1)*PV(IN-1,IR)-&
-       &ZN(JN+1)*PEPSNM(JN)*PV(IN+1,IR)
-      PDIV(IN,II) = +ZKM*PU(IN,IR)+&
-       &ZN(JN)*PEPSNM(JN+1)*PV(IN-1,II)-&
-       &ZN(JN+1)*PEPSNM(JN)*PV(IN+1,II)
-    ENDDO
-  ENDDO
+         PVOR(IR,IN) = -ZKM*PV(II,IN)-&
+              &ZN(JN)*PEPSNM(JN+1)*PU(IR,IN-1)+&
+              &ZN(JN+1)*PEPSNM(JN)*PU(IR,IN+1)
+         PVOR(II,IN) = +ZKM*PV(IR,IN)-&
+              &ZN(JN)*PEPSNM(JN+1)*PU(II,IN-1)+&
+              &ZN(JN+1)*PEPSNM(JN)*PU(II,IN+1)
+         PDIV(IR,IN) = -ZKM*PU(II,IN)+&
+              &ZN(JN)*PEPSNM(JN+1)*PV(IR,IN-1)-&
+              &ZN(JN+1)*PEPSNM(JN)*PV(IR,IN+1)
+         PDIV(II,IN) = +ZKM*PU(IR,IN)+&
+              &ZN(JN)*PEPSNM(JN+1)*PV(II,IN-1)-&
+              &ZN(JN+1)*PEPSNM(JN)*PV(II,IN+1)
+      ENDDO
+   ENDDO
 ELSE
-  DO JN=KM,ITMAX
-    IN = ITMAX+2-JN
-    DO J=1,KFIELD
-      IR = 2*J-1
-      PVOR(IN,IR) = -&
-       &ZN(JN)*PEPSNM(JN+1)*PU(IN-1,IR)+&
-       &ZN(JN+1)*PEPSNM(JN)*PU(IN+1,IR)
-      PDIV(IN,IR) = &
-       &ZN(JN)*PEPSNM(JN+1)*PV(IN-1,IR)-&
-       &ZN(JN+1)*PEPSNM(JN)*PV(IN+1,IR)
-    ENDDO
-  ENDDO
+   DO JN=KM,ITMAX
+      IN = ITMAX+2-JN
+      DO J=1,KFIELD
+         IR = 2*J-1
+         PVOR(IR,IN) = -&
+              &ZN(JN)*PEPSNM(JN+1)*PU(IR,IN-1)+&
+              &ZN(JN+1)*PEPSNM(JN)*PU(IR,IN+1)
+         PDIV(IR,IN) = &
+              &ZN(JN)*PEPSNM(JN+1)*PV(IR,IN-1)-&
+              &ZN(JN+1)*PEPSNM(JN)*PV(IR,IN+1)
+      ENDDO
+   ENDDO
 ENDIF
+
 
 !     ------------------------------------------------------------------
 

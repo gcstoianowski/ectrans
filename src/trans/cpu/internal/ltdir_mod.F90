@@ -1,5 +1,5 @@
 ! (C) Copyright 1987- ECMWF.
-! (C) Copyright 1987- Meteo-France.
+! (C) Copyright 2013- Meteo-France.
 ! 
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
@@ -22,14 +22,15 @@ USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 USE TPM_DIM         ,ONLY : R
 USE TPM_FIELDS      ,ONLY : F
 USE TPM_TRANS, ONLY : LATLON
-USE TPM_FLT         ,ONLY : S
-USE TPM_GEOMETRY    ,ONLY : G
+USE TPM_FLT
+USE TPM_GEOMETRY
+USE TPM_DISTR, ONLY : MYPROC
 
 USE PREPSNM_MOD     ,ONLY : PREPSNM
 USE PRFI2_MOD       ,ONLY : PRFI2
 USE LDFOU2_MOD      ,ONLY : LDFOU2
 USE LEDIR_MOD       ,ONLY : LEDIR
-USE UVTVD_MOD       ,ONLY : UVTVD      
+USE UVTVD_MOD
 USE UPDSP_MOD       ,ONLY : UPDSP
 USE CDMAP_MOD , ONLY : CDMAP
 
@@ -114,10 +115,12 @@ INTEGER(KIND=JPIM) :: ISL, ISLO
 !     LOCAL REALS
 !REAL(KIND=JPRB) :: ZSIA(KLED2,R%NDGNH),       ZAIA(KLED2,R%NDGNH)
 REAL(KIND=JPRB) :: ZEPSNM(0:R%NTMAX+2)
-REAL(KIND=JPRB) :: ZOA1(R%NLED4,KLED2),         ZOA2(R%NLED4,MAX(4*KF_UV,1))
+REAL(KIND=JPRB) :: ZOA1(KLED2,R%NLED4),         ZOA2(MAX(4*KF_UV,1),R%NLED4)
 REAL(KIND=JPRB), ALLOCATABLE :: ZAIA(:,:), ZSIA(:,:)
 
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+integer ila,i,j
+character(len=50) :: s1,s2,s3,str
 
 !     ------------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('LTDIR_MOD',0,ZHOOK_HANDLE)
@@ -151,14 +154,105 @@ IF( LATLON.AND.S%LDLL ) THEN
   ENDIF
 
 ELSE
-
+call gstats(810,0)
   CALL PRFI2(KM,KMLOC,KF_FS,ZAIA,ZSIA)
+call gstats(810,1)
 
 ENDIF
 
+!#define DEBUG_COMM  
+
+#ifdef DEBUG_COMM
+
+s1 = 'new/zaia.c1/zaia.c1.'
+write(s2,9) KM,myproc-1
+9 format(i0,'.',i0)
+s3 = trim(s2)
+str = trim(s1) // s3
+open(11,file=str,form='formatted',status='unknown',action='write')
+
+do i=1,R%NDGNH
+   do j=1,KLED2
+      write(11,10) j,i,zaia(j,i)
+   enddo
+enddo
+
+10 format(i3,i8,' ',E18.10)
+
+close(11)
+
+s1 = 'new/zsia.c1/zsia.c1.'
+write(s2,9) KM,myproc-1
+s3 = trim(s2)
+str = trim(s1) // s3
+open(11,file=str,form='formatted',status='unknown',action='write')
+
+do i=1,R%NDGNH
+   do j=1,KLED2
+      write(11,10) j,i,zaia(j,i)
+   enddo
+enddo
+
+close(11)
+
+#endif
+
+
 CALL LDFOU2(KM,KF_UV,ZAIA,ZSIA)
 
+#ifdef DEBUG_COMM
+
+s1 = 'new/zaia.c2/zaia.c2.'
+write(s2,9) KM,myproc-1
+s3 = trim(s2)
+str = trim(s1) // s3
+open(11,file=str,form='formatted',status='unknown',action='write')
+
+do i=1,R%NDGNH
+   do j=1,KLED2
+      write(11,10) j,i,zaia(j,i)
+   enddo
+enddo
+
+
+close(11)
+
+s1 = 'new/zsia.c2/zsia.c2.'
+write(s2,9) KM,myproc-1
+s3 = trim(s2)
+str = trim(s1) // s3
+open(11,file=str,form='formatted',status='unknown',action='write')
+
+do i=1,R%NDGNH
+   do j=1,KLED2
+      write(11,10) j,i,zaia(j,i)
+   enddo
+enddo
+
+close(11)
+
+#endif
+
 CALL LEDIR(KM,KMLOC,IFC,IIFC,ISL,IDGLU,KLED2,ZAIA,ZSIA,ZOA1,F%RW(1:R%NDGNH))
+
+#ifdef DEBUG_COMM
+
+s1 = 'new/zoa1/zoa1.'
+write(s2,9) KM,myproc-1
+s3 = trim(s2)
+str = trim(s1) // s3
+open(11,file=str,form='formatted',status='unknown',action='write')
+
+ILA = (R%NTMAX-KM+2)/2
+do j=1,IFC
+   do i=1,ILA
+      write(11,10) j,i,zoa1(j,i)
+   enddo
+enddo
+
+close(11)
+
+#endif
 
 DEALLOCATE(ZAIA)
 DEALLOCATE(ZSIA)
@@ -178,9 +272,27 @@ IF( KF_UV > 0 ) THEN
   IVORE = 2*KF_UV
   IDIVS = 2*KF_UV+1
   IDIVE = 4*KF_UV
-  CALL UVTVD(KM,KF_UV,ZEPSNM,ZOA1(:,IUS:IUE),ZOA1(:,IVS:IVE),&
-   & ZOA2(:,IVORS:IVORE),ZOA2(:,IDIVS:IDIVE))
+  CALL UVTVD(KM,KF_UV,ZEPSNM,ZOA1(IUS:IUE,:),ZOA1(IVS:IVE,:),&
+   & ZOA2(IVORS:IVORE,:),ZOA2(IDIVS:IDIVE,:))
 ENDIF
+
+#ifdef DEBUG_COMM
+
+s1 = 'new/zoa2/zoa2.'
+write(s2,9) KM,myproc-1
+s3 = trim(s2)
+str = trim(s1) // s3
+open(11,file=str,form='formatted',status='unknown',action='write')
+
+do j=1,4*KF_UV
+   do i=1,R%NTMAX
+      write(11,10) j,i,zoa2(j,i)
+   enddo
+enddo
+
+close(11)
+
+#endif
 
 !     ------------------------------------------------------------------
 
@@ -191,6 +303,7 @@ CALL UPDSP(KM,KF_UV,KF_SCALARS,ZOA1,ZOA2, &
  & PSPVOR,PSPDIV,PSPSCALAR,&
  & PSPSC3A,PSPSC3B,PSPSC2 , &
  & KFLDPTRUV,KFLDPTRSC)
+
 
 !     ------------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('LTDIR_MOD',1,ZHOOK_HANDLE)
