@@ -124,6 +124,8 @@ logical :: lsyncstats = .false.
 logical :: lstatscpu = .false.
 logical :: lstats_mem = .false.
 logical :: lxml_stats = .false.
+logical :: luse_progress_thread = .false.
+
 integer(kind=jpim) :: nstats_mem = 0
 integer(kind=jpim) :: ntrace_stats = 0
 integer(kind=jpim) :: nprnt_stats = 1
@@ -183,6 +185,13 @@ integer :: ipgp_start, ipgp_end, ipgpuv_start, ipgpuv_end
 
 real(kind=jprb), allocatable :: global_field(:,:)
 
+interface
+subroutine start_MPI_helper() bind(C, name="start_MPI_helper_")
+end subroutine
+subroutine stop_MPI_helper() bind(C, name="stop_MPI_helper_")
+end subroutine
+end interface
+
 !===================================================================================================
 
 #include "setup_trans0.h"
@@ -204,7 +213,7 @@ luse_mpi = detect_mpirun()
 ! Setup
 call get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, nlev, lvordiv, lscders, luvder, &
   & luseflt, nopt_mem_tr, nproma, verbosity, ldump_values, lprint_norms, lmeminfo, nprtrv, nprtrw, ncheck, &
-  & icall_mode)
+  & icall_mode, luse_progress_thread)
 if (cgrid == '') cgrid = cubic_octahedral_gaussian_grid(nsmax)
 call parse_grid(cgrid, ndgl, nloen)
 nflevg = nlev
@@ -222,6 +231,10 @@ else
   lsync_trans = .false.
 endif
 nthread = oml_max_threads()
+
+if (luse_progress_thread) then
+  call start_MPI_helper
+endif
 
 call dr_hook_init()
 
@@ -937,6 +950,10 @@ call trans_end
 ! Finalize MPI
 !===================================================================================================
 
+if (luse_progress_thread) then
+  call stop_MPI_helper
+endif
+
 if (luse_mpi) then
   call mpl_end(ldmeminfo=.false.)
 endif
@@ -1125,7 +1142,7 @@ end subroutine
 
 subroutine get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, nlev, lvordiv, lscders, luvder, &
   &                                   luseflt, nopt_mem_tr, nproma, verbosity, ldump_values, lprint_norms, &
-  &                                   lmeminfo, nprtrv, nprtrw, ncheck, icall_mode)
+  &                                   lmeminfo, nprtrv, nprtrw, ncheck, icall_mode, luse_progress_thread)
 
 #ifdef _OPENACC
   use openacc, only: acc_init, acc_get_device_type
@@ -1155,6 +1172,7 @@ subroutine get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, n
   integer, intent(inout) :: icall_mode      ! The call mode for inv_trans and dir_trans
                                             ! 1: pspvor, pspdiv, pspscalar, pgp
                                             ! 2: pspvor, pspdiv, pspsc3a, pspsc2, pgpuv, pgp3a, pgp2
+  logical, intent(inout) :: luse_progress_thread
 
   character(len=128) :: carg          ! Storage variable for command line arguments
   integer            :: iarg = 1      ! Argument index
@@ -1213,6 +1231,7 @@ subroutine get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, n
           if (icall_mode /= 1 .and. icall_mode /= 2) then
             call parsing_failed("Invalid argument for --callmode: must be 1 or 2")
           end if
+      case('--progress-thread'); luse_progress_thread = .True.
       case default
         call parsing_failed("Unrecognised argument: " // trim(carg))
 
