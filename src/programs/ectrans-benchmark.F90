@@ -9,12 +9,6 @@
 
 program ectrans_benchmark
 
-#ifdef USE_PINNED
-#define PINNED_TAG , pinned
-#else
-#define PINNED_TAG
-#endif
-
 !
 ! Spectral transform test
 !
@@ -29,13 +23,20 @@ program ectrans_benchmark
 
 use parkind1, only: jpim, jprb, jprd
 use oml_mod ,only : oml_max_threads
-use mpl_module
+use mpl_module , only : mpl_init,mpl_comm,mpl_nproc,mpl_myrank,mpl_cart_coords, &
+     &   mpl_groups_create,mpl_broadcast,mpl_allreduce,mpl_buffer_method, &
+     &   mpl_recv,mpl_send,mpl_end
 use yomgstats, only: jpmaxstat, gstats_lstats => lstats
-use yomhook, only : dr_hook_init
+use yomhook, only : jphook, dr_hook, dr_hook_init
+use timing_mod, only: get_time, tcomm1, tcomm2, tcomm3, tcomp1, tcomp2, tcount, t_event, t_batch, &
+  &                   t_stage, t_type
+use progress_thread
+use mpi, only : MPI_DOUBLE_PRECISION,MPI_COMM_WORLD,mpi_barrier
 
 implicit none
 
 ! Number of points in top/bottom latitudes
+real(jphook) :: zhook_handle
 integer(kind=jpim), parameter :: min_octa_points = 20
 
 integer(kind=jpim) :: istack, getstackusage
@@ -51,7 +52,6 @@ integer(kind=jpim), parameter :: noutdump = 7 ! Unit number for field output
 integer(kind=jpim) :: iters   = 10  ! Number of iterations for transform test
 integer(kind=jpim) :: nfld    = 1   ! Number of 3D scalar fields
 integer(kind=jpim) :: nlev    = 1   ! Number of vertical levels
-integer(kind=jpim) :: iters_warmup = 3 ! Number of warm up steps (for which timing statistics should be ignored)
 
 integer(kind=jpim) :: nflevg  ! Total number of vertical levels
 
@@ -104,6 +104,7 @@ integer(kind=jpim) :: ndgl    ! Number of latitudes
 integer(kind=jpim), allocatable :: nloen(:) ! Number of points on each latitude
 logical :: luserpnm = .false. ! Use Belusov algorithm to compute RPNM array instead of per m
 logical :: luseflt = .false. ! Use fast legendre transforms
+integer(kind=jpim) :: npromatr = 1
 
 ! Extra inv_trans options
 logical :: lvordiv = .false. ! Compute vorticity and divergence in grid point space
@@ -118,7 +119,7 @@ logical :: lstats_omp = .false.
 logical :: lstats_comms = .false.
 logical :: lbarrier_stats = .false.
 logical :: lbarrier_stats2 = .false.
-logical :: ldetailed_stats = .false.
+logical :: ldetailed_stats = .true.
 logical :: lstats_alloc = .false.
 logical :: lsyncstats = .false.
 logical :: lstatscpu = .false.
@@ -129,7 +130,6 @@ logical :: luse_progress_thread = .false.
 integer(kind=jpim) :: nstats_mem = 0
 integer(kind=jpim) :: ntrace_stats = 0
 integer(kind=jpim) :: nprnt_stats = 1
-integer(kind=jpim) :: nopt_mem_tr = 0
 
 logical :: lprint_norms = .false. ! Calculate and print spectral norms
 logical :: lmeminfo = .false. ! Show information from FIAT routine ec_meminfo at the end
@@ -178,19 +178,22 @@ logical :: luse_mpi = .true.
 
 character(len=16) :: cgrid = ''
 
-integer(kind=jpim) :: ierr
+integer(kind=jpim) :: ierr,iproc,j,k,l
 integer :: icall_mode = 1
 integer :: inum_wind_fields, inum_sc_3d_fields, inum_sc_2d_fields, itotal_fields
 integer :: ipgp_start, ipgp_end, ipgpuv_start, ipgpuv_end
+real(jprd) :: t0
+integer :: num_batches
+real(8), allocatable :: t_comm(:,:,:),t_comp(:,:,:),gt_comm(:,:,:,:),gt_comp(:,:,:,:)
 
 real(kind=jprb), allocatable :: global_field(:,:)
 
-interface
-subroutine start_MPI_helper() bind(C, name="start_MPI_helper_")
-end subroutine
-subroutine stop_MPI_helper() bind(C, name="stop_MPI_helper_")
-end subroutine
-end interface
+!interface
+!subroutine start_MPI_helper() bind(C, name="start_MPI_helper")
+!end subroutine
+!subroutine stop_MPI_helper() bind(C, name="stop_MPI_helper")
+!end subroutine
+!end interface
 
 !===================================================================================================
 
@@ -208,12 +211,14 @@ end interface
 
 !===================================================================================================
 
+luse_progress_thread = .false.
+
 luse_mpi = detect_mpirun()
 
 ! Setup
 call get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, nlev, lvordiv, lscders, luvder, &
   & luseflt, nopt_mem_tr, nproma, verbosity, ldump_values, lprint_norms, lmeminfo, nprtrv, nprtrw, ncheck, &
-  & icall_mode, luse_progress_thread)
+  & icall_mode, npromatr, luse_progress_thread)
 if (cgrid == '') cgrid = cubic_octahedral_gaussian_grid(nsmax)
 call parse_grid(cgrid, ndgl, nloen)
 nflevg = nlev
@@ -228,12 +233,12 @@ else
   nproc = 1
   myproc = 1
   mpl_comm = -1
-  lsync_trans = .false.
 endif
 nthread = oml_max_threads()
 
 if (luse_progress_thread) then
   call start_MPI_helper
+  call pause_MPI_helper
 endif
 
 call dr_hook_init()
@@ -242,6 +247,7 @@ call dr_hook_init()
 
 if( lstats ) call gstats(0,0)
 ztinit = timef()
+t0 = get_time()
 
 ! only output to stdout on pe 1
 if (nproc > 1) then
@@ -374,7 +380,7 @@ call gstats(1, 0)
 call setup_trans0(kout=nout, kerr=nerr, kprintlev=merge(2, 0, verbosity == 1),                &
   &               kprgpns=nprgpns, kprgpew=nprgpew, kprtrw=nprtrw, ldsync_trans=lsync_trans,  &
   &               ldeq_regions=leq_regions, ldalloperm=.true., ldmpoff=.not.luse_mpi,         &
-  &               kopt_memory_tr=nopt_mem_tr)
+  &               kopt_memory_tr=nopt_mem_tr, kpromatr=npromatr)
 call gstats(1, 1)
 
 call gstats(2, 0)
@@ -520,11 +526,19 @@ endif
 if (icall_mode == 1) then
   itotal_fields = nflevg * (inum_wind_fields + inum_sc_3d_fields) + inum_sc_2d_fields
   allocate(zgp(nproma,itotal_fields,ngpblks))
+  zgp(1,1,1)=HUGE(1._JPRB)
 else
   allocate(zgpuv(nproma,nflevg,inum_wind_fields,ngpblks))
   allocate(zgp3a(nproma,nflevg,inum_sc_3d_fields,ngpblks))
   allocate(zgp2(nproma,inum_sc_2d_fields,ngpblks))
 endif
+
+num_batches = (itotal_fields + npromatr - 1) / npromatr
+allocate(t_event((iters+2)*10*num_batches))
+allocate(t_batch((iters+2)*10*num_batches))
+allocate(t_stage((iters+2)*10*num_batches))
+allocate(t_type((iters+2)*10*num_batches))
+tcount = 1
 
 !===================================================================================================
 ! Allocate norm arrays
@@ -594,16 +608,26 @@ endif
 
 if (iters <= 0) call abor1('ectrans_benchmark:iters <= 0')
 
-allocate(ztstep(iters+iters_warmup))
-allocate(ztstep1(iters+iters_warmup))
-allocate(ztstep2(iters+iters_warmup))
+allocate(ztstep(iters+2))
+allocate(ztstep1(iters+2))
+allocate(ztstep2(iters+2))
+
+ztstepavg  = 0._jprd
+ztstepmax  = 0._jprd
+ztstepmin  = 9999999999999999._jprd
+ztstepavg1 = 0._jprd
+ztstepmax1 = 0._jprd
+ztstepmin1 = 9999999999999999._jprd
+ztstepavg2 = 0._jprd
+ztstepmax2 = 0._jprd
+ztstepmin2 = 9999999999999999._jprd
 
 if (verbosity >= 1 .and. myproc == 1) then
   write(nout,'(a)') '======= Start of spectral transforms  ======='
   write(nout,'(" ")')
 endif
 
-
+ztloop = timef()
 
 !===================================================================================================
 ! Do spectral transform loop
@@ -611,15 +635,11 @@ endif
 
 gstats_lstats = .false.
 
-write(nout,'(a,i0,a,i0,a)') 'Running for ', iters, ' iterations with ', iters_warmup, &
-  & ' extra warm-up iterations'
+write(nout,'(a,i5,a)') 'Running for ', iters, ' iterations with 2 extra warm-up iterations'
 write(nout,'(" ")')
 
-do jstep = 1, iters+iters_warmup
-  if (jstep == iters_warmup + 1) then
-    gstats_lstats = .true.
-    ztloop = timef()
-  endif
+do jstep = 1, iters+2
+  if (jstep == 3) gstats_lstats = .true.
 
   call gstats(3,0)
   ztstep(jstep) = timef()
@@ -667,8 +687,12 @@ do jstep = 1, iters+iters_warmup
   ! Do direct transform
   !=================================================================================================
 
+  zspscalar = 0.0
+  
   ztstep2(jstep) = timef()
 
+  !!! call mpi_barrier(mpi_comm_world,ierr)
+  !!! call dr_hook('DRHOOK_PAPI_DIR_TRANS', 0, zhook_handle)
   call gstats(5,0)
   if (icall_mode == 1) then
     call dir_trans(pgp=zgp(:,ipgp_start:ipgp_end,:), pspvor=zspvor, pspdiv=zspdiv, &
@@ -681,8 +705,26 @@ do jstep = 1, iters+iters_warmup
   endif
   call gstats(5,1)
   ztstep2(jstep) = (timef() - ztstep2(jstep))/1000.0_jprd
+  !!! call dr_hook('DRHOOK_PAPI_DIR_TRANS', 1, zhook_handle)
+  !!! call mpi_barrier(mpi_comm_world,ierr)
+
+  !=================================================================================================
+  ! Calculate timings
+  !=================================================================================================
 
   ztstep(jstep) = (timef() - ztstep(jstep))/1000.0_jprd
+
+  ztstepavg = ztstepavg + ztstep(jstep)
+  ztstepmin = min(ztstep(jstep), ztstepmin)
+  ztstepmax = max(ztstep(jstep), ztstepmax)
+
+  ztstepavg1 = ztstepavg1 + ztstep1(jstep)
+  ztstepmin1 = min(ztstep1(jstep), ztstepmin1)
+  ztstepmax1 = max(ztstep1(jstep), ztstepmax1)
+
+  ztstepavg2 = ztstepavg2 + ztstep2(jstep)
+  ztstepmin2 = min(ztstep2(jstep), ztstepmin2)
+  ztstepmax2 = max(ztstep2(jstep), ztstepmax2)
 
   !=================================================================================================
   ! Print norms
@@ -832,20 +874,6 @@ if (lprint_norms .or. ncheck > 0) then
   endif
 endif
 
-!===================================================================================================
-! Calculate timings
-!===================================================================================================
-
-ztstepavg = sum(ztstep(iters_warmup+1:))
-ztstepmin = minval(ztstep(iters_warmup+1:))
-ztstepmax = maxval(ztstep(iters_warmup+1:))
-ztstepavg1 = sum(ztstep1(iters_warmup+1:))
-ztstepmin1 = minval(ztstep1(iters_warmup+1:))
-ztstepmax1 = maxval(ztstep1(iters_warmup+1:))
-ztstepavg2 = sum(ztstep2(iters_warmup+1:))
-ztstepmin2 = minval(ztstep2(iters_warmup+1:))
-ztstepmax2 = maxval(ztstep2(iters_warmup+1:))
-
 if (luse_mpi) then
   call mpl_allreduce(ztloop,     'sum', ldreprod=.false.)
   call mpl_allreduce(ztstep,     'sum', ldreprod=.false.)
@@ -867,15 +895,15 @@ endif
 ztstepavg = (ztstepavg/real(nproc,jprb))/real(iters,jprd)
 ztloop = ztloop/real(nproc,jprd)
 ztstep(:) = ztstep(:)/real(nproc,jprd)
-ztstepmed = get_median(ztstep(iters_warmup+1:))
+ztstepmed = get_median(ztstep)
 
 ztstepavg1 = (ztstepavg1/real(nproc,jprb))/real(iters,jprd)
 ztstep1(:) = ztstep1(:)/real(nproc,jprd)
-ztstepmed1 = get_median(ztstep1(iters_warmup+1:))
+ztstepmed1 = get_median(ztstep1)
 
 ztstepavg2 = (ztstepavg2/real(nproc,jprb))/real(iters,jprd)
 ztstep2(:) = ztstep2(:)/real(nproc,jprd)
-ztstepmed2 = get_median(ztstep2(iters_warmup+1:))
+ztstepmed2 = get_median(ztstep2)
 
 write(nout,'(a)') '======= Start of time step stats ======='
 write(nout,'(" ")')
@@ -903,6 +931,50 @@ write(nout,'("loop (s): ",f8.4)') ztloop
 write(nout,'(" ")')
 write(nout,'(a)') '======= End of time step stats ======='
 write(nout,'(" ")')
+
+
+
+allocate(t_comm(3,2,num_batches),t_comp(2,2,num_batches))
+
+do i = 1, tcount - 1
+   select case(t_type(i))
+     case(tcomm1)
+        write(1000+myproc,*) "COMM", 1, t_batch(i), t_stage(i), t_event(i) - t0
+        t_comm(1,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tcomm2)
+       write(1000+myproc,*) "COMM", 2, t_batch(i), t_stage(i), t_event(i) - t0
+        t_comm(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tcomm3)
+       write(1000+myproc,*) "COMM", 3, t_batch(i), t_stage(i), t_event(i) - t0
+        t_comm(3,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tcomp1)
+       write(1000+myproc,*) "COMP", 1, t_batch(i), t_stage(i), t_event(i) - t0
+        t_comp(1,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tcomp2)
+       write(1000+myproc,*) "COMP", 3, t_batch(i), t_stage(i), t_event(i) - t0
+        t_comp(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+   end select
+end do
+
+if(myproc .eq. 1) then
+   allocate(gt_comm(3,2,num_batches,nproc),gt_comp(2,2,num_batches,nproc))
+endif
+
+call mpi_gather(t_comm,6*num_batches,MPI_DOUBLE_PRECISION,gt_comm,6*num_batches,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+call mpi_gather(t_comp,4*num_batches,MPI_DOUBLE_PRECISION,gt_comp,4*num_batches,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+
+if(myproc .eq. 1) then
+   open(10,file='sum.txt',action='write',form='formatted')
+   do iproc = 1,nproc
+      write(10,*) (((gt_comm(j,k,l,iproc), j=1,3), k=1,2), l=1,num_batches)
+   enddo
+   write(10,*) ' '
+   do iproc = 1,nproc
+      write(10,*) (((gt_comp(j,k,l,iproc), j=1,2), k=1,2), l=1,num_batches)
+   enddo
+   close(10)
+
+endif
 
 if (lstack) then
   ! Gather stack usage statistics
@@ -1095,8 +1167,6 @@ subroutine print_help(unit)
     & (cubic relation)"
   write(nout, "(a)") "    -n, --niter NITER   Run for this many inverse/direct transform&
     & iterations (default = 10)"
-  write(nout, "(a)") "    --niter-warmup      Number of warm up iterations,&
-    & for which timing statistics should be ignored (default = 3)"
   write(nout, "(a)") "    -f, --nfld NFLD     Number of scalar fields (default = 1)"
   write(nout, "(a)") "    -l, --nlev NLEV     Number of vertical levels (default = 1)"
   write(nout, "(a)") "    --vordiv            Also transform vorticity-divergence to wind"
@@ -1142,7 +1212,8 @@ end subroutine
 
 subroutine get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, nlev, lvordiv, lscders, luvder, &
   &                                   luseflt, nopt_mem_tr, nproma, verbosity, ldump_values, lprint_norms, &
-  &                                   lmeminfo, nprtrv, nprtrw, ncheck, icall_mode, luse_progress_thread)
+  &                                   lmeminfo, nprtrv, nprtrw, ncheck, icall_mode, npromatr, &
+  &                                   luse_progress_thread)
 
 #ifdef _OPENACC
   use openacc, only: acc_init, acc_get_device_type
@@ -1230,6 +1301,10 @@ subroutine get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, n
           icall_mode = get_int_value('--callmode', iarg)
           if (icall_mode /= 1 .and. icall_mode /= 2) then
             call parsing_failed("Invalid argument for --callmode: must be 1 or 2")
+          end if
+      case('--npromatr'); npromatr = get_int_value('--npromatr', iarg)
+          if (npromatr < 1) then
+            call parsing_failed("Invalid argument for --npromatr: must be greater than 0")
           end if
       case('--progress-thread'); luse_progress_thread = .True.
       case default
