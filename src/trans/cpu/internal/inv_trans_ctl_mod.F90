@@ -141,8 +141,11 @@ INTEGER(KIND=JPIM) :: IOFFD,IOFFU,IOFFV,IOFFUVD,IOFFSC,IOFFSCNS,IOFFSCEW,IOFF,IF
 ! Perform transform
 
 IF_GPB = 2*KF_UV_G+KF_SCALARS_G
-IF(NPROMATR > 0 .AND. IF_GPB > NPROMATR) THEN
-
+!IF(NPROMATR > 0 .AND. IF_GPB > NPROMATR) THEN
+! For the overlap prototype, we are disabling this option for the inverse transform
+!IF(NPROMATR > 0 .AND. IF_GPB > NPROMATR) THEN
+IF(.FALSE.) THEN
+   
   ! Fields to be split into packets
 
   CALL SHUFFLE(KF_UV_G,KF_SCALARS_G,ISHFUV_G,IVSETUV,ISHFSC_G,IVSETSC,&

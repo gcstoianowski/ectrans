@@ -9,6 +9,12 @@
 
 program ectrans_benchmark
 
+#ifdef USE_PINNED
+#define PINNED_TAG , pinned
+#else
+#define PINNED_TAG
+#endif
+
 !
 ! Spectral transform test
 !
@@ -52,6 +58,7 @@ integer(kind=jpim), parameter :: noutdump = 7 ! Unit number for field output
 integer(kind=jpim) :: iters   = 10  ! Number of iterations for transform test
 integer(kind=jpim) :: nfld    = 1   ! Number of 3D scalar fields
 integer(kind=jpim) :: nlev    = 1   ! Number of vertical levels
+integer(kind=jpim) :: iters_warmup = 3 ! Number of warm up steps (for which timing statistics should be ignored)
 
 integer(kind=jpim) :: nflevg  ! Total number of vertical levels
 
@@ -125,11 +132,12 @@ logical :: lsyncstats = .false.
 logical :: lstatscpu = .false.
 logical :: lstats_mem = .false.
 logical :: lxml_stats = .false.
-logical :: luse_progress_thread = .false.
+!! logical :: luse_progress_thread = .false.
 
 integer(kind=jpim) :: nstats_mem = 0
 integer(kind=jpim) :: ntrace_stats = 0
 integer(kind=jpim) :: nprnt_stats = 1
+integer(kind=jpim) :: nopt_mem_tr = 0
 
 logical :: lprint_norms = .false. ! Calculate and print spectral norms
 logical :: lmeminfo = .false. ! Show information from FIAT routine ec_meminfo at the end
@@ -233,12 +241,12 @@ else
   nproc = 1
   myproc = 1
   mpl_comm = -1
+  lsync_trans = .false.
 endif
 nthread = oml_max_threads()
 
 if (luse_progress_thread) then
   call start_MPI_helper
-  call pause_MPI_helper
 endif
 
 call dr_hook_init()
@@ -608,9 +616,9 @@ endif
 
 if (iters <= 0) call abor1('ectrans_benchmark:iters <= 0')
 
-allocate(ztstep(iters+2))
-allocate(ztstep1(iters+2))
-allocate(ztstep2(iters+2))
+allocate(ztstep(iters+iters_warmup))
+allocate(ztstep1(iters+iters_warmup))
+allocate(ztstep2(iters+iters_warmup))
 
 ztstepavg  = 0._jprd
 ztstepmax  = 0._jprd
@@ -635,11 +643,15 @@ ztloop = timef()
 
 gstats_lstats = .false.
 
-write(nout,'(a,i5,a)') 'Running for ', iters, ' iterations with 2 extra warm-up iterations'
+write(nout,'(a,i0,a,i0,a)') 'Running for ', iters, ' iterations with ', iters_warmup, &
+  & ' extra warm-up iterations'
 write(nout,'(" ")')
 
-do jstep = 1, iters+2
-  if (jstep == 3) gstats_lstats = .true.
+do jstep = 1, iters+iters_warmup
+  if (jstep == iters_warmup + 1) then
+    gstats_lstats = .true.
+    ztloop = timef()
+  endif
 
   call gstats(3,0)
   ztstep(jstep) = timef()
@@ -655,6 +667,7 @@ do jstep = 1, iters+2
       &            kvsetuv=ivset, kvsetsc=ivsetsc, &
       &            ldscders=lscders, ldvorgp=lvordiv, lddivgp=lvordiv, lduvder=luvder, &
       &            kproma=nproma)
+      !! &            ldscders=lscders, ldvorgp=.false., lddivgp=.false., lduvder=luvder, &
   else
     call inv_trans(pspvor=zspvor, pspdiv=zspdiv, pspsc3a=zspsc3a, pspsc2=zspsc2, pgpuv=zgpuv, &
       &            pgp3a=zgp3a, pgp2=zgp2, &
@@ -708,23 +721,7 @@ do jstep = 1, iters+2
   !!! call dr_hook('DRHOOK_PAPI_DIR_TRANS', 1, zhook_handle)
   !!! call mpi_barrier(mpi_comm_world,ierr)
 
-  !=================================================================================================
-  ! Calculate timings
-  !=================================================================================================
-
   ztstep(jstep) = (timef() - ztstep(jstep))/1000.0_jprd
-
-  ztstepavg = ztstepavg + ztstep(jstep)
-  ztstepmin = min(ztstep(jstep), ztstepmin)
-  ztstepmax = max(ztstep(jstep), ztstepmax)
-
-  ztstepavg1 = ztstepavg1 + ztstep1(jstep)
-  ztstepmin1 = min(ztstep1(jstep), ztstepmin1)
-  ztstepmax1 = max(ztstep1(jstep), ztstepmax1)
-
-  ztstepavg2 = ztstepavg2 + ztstep2(jstep)
-  ztstepmin2 = min(ztstep2(jstep), ztstepmin2)
-  ztstepmax2 = max(ztstep2(jstep), ztstepmax2)
 
   !=================================================================================================
   ! Print norms
@@ -874,6 +871,19 @@ if (lprint_norms .or. ncheck > 0) then
   endif
 endif
 
+!===================================================================================================
+! Calculate timings
+!===================================================================================================
+
+ztstepavg = sum(ztstep(iters_warmup+1:))
+ztstepmin = minval(ztstep(iters_warmup+1:))
+ztstepmax = maxval(ztstep(iters_warmup+1:))
+ztstepavg1 = sum(ztstep1(iters_warmup+1:))
+ztstepmin1 = minval(ztstep1(iters_warmup+1:))
+ztstepmax1 = maxval(ztstep1(iters_warmup+1:))
+ztstepavg2 = sum(ztstep2(iters_warmup+1:))
+ztstepmin2 = minval(ztstep2(iters_warmup+1:))
+ztstepmax2 = maxval(ztstep2(iters_warmup+1:))
 if (luse_mpi) then
   call mpl_allreduce(ztloop,     'sum', ldreprod=.false.)
   call mpl_allreduce(ztstep,     'sum', ldreprod=.false.)
@@ -895,15 +905,15 @@ endif
 ztstepavg = (ztstepavg/real(nproc,jprb))/real(iters,jprd)
 ztloop = ztloop/real(nproc,jprd)
 ztstep(:) = ztstep(:)/real(nproc,jprd)
-ztstepmed = get_median(ztstep)
+ztstepmed = get_median(ztstep(iters_warmup+1:))
 
 ztstepavg1 = (ztstepavg1/real(nproc,jprb))/real(iters,jprd)
 ztstep1(:) = ztstep1(:)/real(nproc,jprd)
-ztstepmed1 = get_median(ztstep1)
+ztstepmed1 = get_median(ztstep1(iters_warmup+1:))
 
 ztstepavg2 = (ztstepavg2/real(nproc,jprb))/real(iters,jprd)
 ztstep2(:) = ztstep2(:)/real(nproc,jprd)
-ztstepmed2 = get_median(ztstep2)
+ztstepmed2 = get_median(ztstep2(iters_warmup+1:))
 
 write(nout,'(a)') '======= Start of time step stats ======='
 write(nout,'(" ")')
@@ -1167,6 +1177,8 @@ subroutine print_help(unit)
     & (cubic relation)"
   write(nout, "(a)") "    -n, --niter NITER   Run for this many inverse/direct transform&
     & iterations (default = 10)"
+  write(nout, "(a)") "    --niter-warmup      Number of warm up iterations,&
+    & for which timing statistics should be ignored (default = 3)"
   write(nout, "(a)") "    -f, --nfld NFLD     Number of scalar fields (default = 1)"
   write(nout, "(a)") "    -l, --nlev NLEV     Number of vertical levels (default = 1)"
   write(nout, "(a)") "    --vordiv            Also transform vorticity-divergence to wind"
@@ -1243,6 +1255,7 @@ subroutine get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, n
   integer, intent(inout) :: icall_mode      ! The call mode for inv_trans and dir_trans
                                             ! 1: pspvor, pspdiv, pspscalar, pgp
                                             ! 2: pspvor, pspdiv, pspsc3a, pspsc2, pgpuv, pgp3a, pgp2
+  integer, intent(inout) :: npromatr        ! Batch size for overlapped communications
   logical, intent(inout) :: luse_progress_thread
 
   character(len=128) :: carg          ! Storage variable for command line arguments

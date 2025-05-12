@@ -517,9 +517,9 @@ ENDIF
 
 CALL GSTATS(1805,1)
 
-if(luse_progress_thread) then
-   call pause_mpi_helper
-endif
+! if(luse_progress_thread) then
+   ! call pause_mpi_helper
+! endif
 
 ! Copy local contribution
 
@@ -700,7 +700,7 @@ ENDDO
 call gstats(908,1)
 
 if(luse_progress_thread) then
-   call unpause_mpi_helper
+   ! call unpause_mpi_helper
 
    call gstats(907,0)
    CALL PT_REQSET_START(SEND_ID,STATUS)

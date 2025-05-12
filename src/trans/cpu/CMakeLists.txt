@@ -46,6 +46,9 @@ function(generate_backend_sources)
     GLOB
           algor/*.F90
           internal/*.F90
+          internal/*.f90
+          internal/*.c
+          internal/*.h
           external/*.F90
     QUIET
   )

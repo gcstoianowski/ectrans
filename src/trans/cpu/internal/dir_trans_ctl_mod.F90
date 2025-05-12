@@ -362,6 +362,9 @@ IF (NPROMATR > 0) THEN
     
 
 ENDDO
+ if(luse_progress_thread) then
+     call pause_mpi_helper
+ endif
 ELSE
 
   ! No splitting of fields, transform done in one go
