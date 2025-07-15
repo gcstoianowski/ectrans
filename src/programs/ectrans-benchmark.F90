@@ -34,8 +34,8 @@ use mpl_module , only : mpl_init,mpl_comm,mpl_nproc,mpl_myrank,mpl_cart_coords, 
      &   mpl_recv,mpl_send,mpl_end
 use yomgstats, only: jpmaxstat, gstats_lstats => lstats
 use yomhook, only : jphook, dr_hook, dr_hook_init
-use timing_mod, only: get_time, tcomm1, tcomm2, tcomm3, tcomp1, tcomp2, tcount, t_event, t_batch, &
-  &                   t_stage, t_type
+use timing_mod, only: get_time, tcomm1, tcomm2, tcomm3, tcomp1, tcomp2, tcomp3, tcomp4, tpack1, tpack2, &
+  &                   trecv1, tunpk1, tunpk2, t_batch, tcount, t_event, t_stage, t_type, tenable
 use progress_thread
 use mpi, only : MPI_DOUBLE_PRECISION,MPI_COMM_WORLD,mpi_barrier
 
@@ -192,7 +192,7 @@ integer :: inum_wind_fields, inum_sc_3d_fields, inum_sc_2d_fields, itotal_fields
 integer :: ipgp_start, ipgp_end, ipgpuv_start, ipgpuv_end
 real(jprd) :: t0
 integer :: num_batches
-real(8), allocatable :: t_comm(:,:,:),t_comp(:,:,:),gt_comm(:,:,:,:),gt_comp(:,:,:,:)
+!!! real(8), allocatable :: t_comm(:,:,:),t_comp(:,:,:),gt_comm(:,:,:,:),gt_comp(:,:,:,:)
 
 real(kind=jprb), allocatable :: global_field(:,:)
 
@@ -542,10 +542,12 @@ else
 endif
 
 num_batches = (itotal_fields + npromatr - 1) / npromatr
-allocate(t_event((iters+2)*10*num_batches))
-allocate(t_batch((iters+2)*10*num_batches))
-allocate(t_stage((iters+2)*10*num_batches))
-allocate(t_type((iters+2)*10*num_batches))
+allocate(t_event((iters+iters_warmup)*12*num_batches))
+allocate(t_batch((iters+iters_warmup)*12*num_batches))
+allocate(t_stage((iters+iters_warmup)*12*num_batches))
+allocate(t_type((iters+iters_warmup)*12*num_batches))
+tenable = .false.
+!! tenable = .true.
 tcount = 1
 
 !===================================================================================================
@@ -944,47 +946,69 @@ write(nout,'(" ")')
 
 
 
-allocate(t_comm(3,2,num_batches),t_comp(2,2,num_batches))
-
+!!! allocate(t_comm(3,2,num_batches),t_comp(2,2,num_batches))
+if (tenable) then
 do i = 1, tcount - 1
    select case(t_type(i))
      case(tcomm1)
-        write(1000+myproc,*) "COMM", 1, t_batch(i), t_stage(i), t_event(i) - t0
-        t_comm(1,t_stage(i),t_batch(i)) = t_event(i) - t0
+       write(1000+myproc,*) "COMM1", t_batch(i), t_stage(i), t_event(i) - t0
+       !!! t_comm(1,t_stage(i),t_batch(i)) = t_event(i) - t0
      case(tcomm2)
-       write(1000+myproc,*) "COMM", 2, t_batch(i), t_stage(i), t_event(i) - t0
-        t_comm(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+       write(1000+myproc,*) "COMM2", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_comm(2,t_stage(i),t_batch(i)) = t_event(i) - t0
      case(tcomm3)
-       write(1000+myproc,*) "COMM", 3, t_batch(i), t_stage(i), t_event(i) - t0
-        t_comm(3,t_stage(i),t_batch(i)) = t_event(i) - t0
+       write(1000+myproc,*) "COMM3", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_comm(3,t_stage(i),t_batch(i)) = t_event(i) - t0
      case(tcomp1)
-       write(1000+myproc,*) "COMP", 1, t_batch(i), t_stage(i), t_event(i) - t0
-        t_comp(1,t_stage(i),t_batch(i)) = t_event(i) - t0
+       write(1000+myproc,*) "COMP1", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_comp(1,t_stage(i),t_batch(i)) = t_event(i) - t0
      case(tcomp2)
-       write(1000+myproc,*) "COMP", 3, t_batch(i), t_stage(i), t_event(i) - t0
-        t_comp(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+       write(1000+myproc,*) "COMP2", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_comp(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tcomp3)
+       write(1000+myproc,*) "COMP3", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_comp(1,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tcomp4)
+       write(1000+myproc,*) "COMP4", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_comp(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tpack1)
+       write(1000+myproc,*) "PACK1", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(1,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tpack2)
+       write(1000+myproc,*) "PACK2", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(trecv1)
+       write(1000+myproc,*) "RECV1", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tunpk1)
+       write(1000+myproc,*) "UNPK1", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(1,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tunpk2)
+       write(1000+myproc,*) "UNPK2", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
    end select
 end do
-
-if(myproc .eq. 1) then
-   allocate(gt_comm(3,2,num_batches,nproc),gt_comp(2,2,num_batches,nproc))
 endif
 
-call mpi_gather(t_comm,6*num_batches,MPI_DOUBLE_PRECISION,gt_comm,6*num_batches,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
-call mpi_gather(t_comp,4*num_batches,MPI_DOUBLE_PRECISION,gt_comp,4*num_batches,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
-
-if(myproc .eq. 1) then
-   open(10,file='sum.txt',action='write',form='formatted')
-   do iproc = 1,nproc
-      write(10,*) (((gt_comm(j,k,l,iproc), j=1,3), k=1,2), l=1,num_batches)
-   enddo
-   write(10,*) ' '
-   do iproc = 1,nproc
-      write(10,*) (((gt_comp(j,k,l,iproc), j=1,2), k=1,2), l=1,num_batches)
-   enddo
-   close(10)
-
-endif
+!!! if(myproc .eq. 1) then
+   !!! allocate(gt_comm(3,2,num_batches,nproc),gt_comp(2,2,num_batches,nproc))
+!!! endif
+!!! 
+!!! call mpi_gather(t_comm,6*num_batches,MPI_DOUBLE_PRECISION,gt_comm,6*num_batches,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+!!! call mpi_gather(t_comp,4*num_batches,MPI_DOUBLE_PRECISION,gt_comp,4*num_batches,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+!!! 
+!!! if(myproc .eq. 1) then
+   !!! open(10,file='sum.txt',action='write',form='formatted')
+   !!! do iproc = 1,nproc
+      !!! write(10,*) (((gt_comm(j,k,l,iproc), j=1,3), k=1,2), l=1,num_batches)
+   !!! enddo
+   !!! write(10,*) ' '
+   !!! do iproc = 1,nproc
+      !!! write(10,*) (((gt_comp(j,k,l,iproc), j=1,2), k=1,2), l=1,num_batches)
+   !!! enddo
+   !!! close(10)
+!!! 
+!!! endif
 
 if (lstack) then
   ! Gather stack usage statistics
@@ -1522,6 +1546,41 @@ subroutine gstats_labels
   call gstats_label(157, '   ', 'FTINV_CTL      - L to G transposition')
   call gstats_label(158, '   ', 'FTDIR_CTL      - G to L transposition')
   call gstats_label(400, '   ', 'GSTATS         - GSTATS itself')
+  call gstats_label(501, '   ', 'OVERLAP        - Batch constructor')
+  call gstats_label(504, '   ', 'OVERLAP    - START_COMM incl TRGTOL_C_S')
+  call gstats_label(506, '   ', 'DIR_TRANS_CTL  - Direct Fourier transform')
+  call gstats_label(510, '   ', 'LEDIR          - Direct Legendre transform')
+  call gstats_label(798, '   ', 'SULEG          - Entry barrier')
+  call gstats_label(803, '   ', 'TRGTOL_COMM_SEND  - Pack loop')
+  call gstats_label(805, '   ', 'TRLTOG         - Comms + unpack')
+  call gstats_label(806, '   ', 'TRLTOM         - alltoallv')
+  call gstats_label(807, '   ', 'TRMTOL         - alltoallv')
+  call gstats_label(808, '   ', 'TRLTOG         - unpack only')
+  call gstats_label(814, '   ', 'SUSTAONL       - init par env')
+  call gstats_label(851, '   ', 'SULEG          - comms')
+  call gstats_label(902, '   ', 'DIR_TRANS_CTL  - Append a new batch')
+  call gstats_label(903, '   ', 'DIR_TRANS_CTL  - pt req wait recv')
+  call gstats_label(904, '   ', 'DIR_TRANS_CTL  - pt req start recv')
+  call gstats_label(905, '   ', 'DIR_TRANS_CTL  - Start comms')
+  call gstats_label(906, '   ', 'DIR_TRANS_CTL  - TRGTOL_COMM_RECV')
+  call gstats_label(907, '   ', 'TRGTOL_COMM_SEND  - Start pt req for send')
+  call gstats_label(908, '   ', 'TRGTOL_COMM_SEND  - Pack loop')
+  call gstats_label(910, '   ', 'TRGTOL_COMM_RECV  - unpack')
+  call gstats_label(1251, '   ', 'SULEG          - Six sections')
+  call gstats_label(1601, '   ', 'TRGTOL_COMM_SEND  - Pack local contrib')
+  call gstats_label(1604, '   ', 'TRLTOG_COMM      - process PGLAT by blocks')
+  call gstats_label(1639, '   ', 'FTINV_CTL        - Loop over latitudes')
+  call gstats_label(1640, '   ', 'FTDIR_CTL_COMP   - duplicates #106')
+  call gstats_label(1645, '   ', 'LTDIR_CTL        - LTDIR')
+  call gstats_label(1647, '   ', 'LTINV_CTL+VD2UV_CTL  - LTINV+VD2UV')
+  call gstats_label(1650, '   ', 'SUGAW')
+  call gstats_label(1651, '   ', 'SPNORMD')
+  call gstats_label(1801, '   ', 'SULEG-SUGAW-SUTRLE-...')
+  call gstats_label(1802, '   ', 'INIT_PLANS_FFTW')
+  call gstats_label(1805, '   ', 'TRGTOL_PROLOG + TRGTOL_C_SND setups')
+  call gstats_label(1806, '   ', 'TRLTOG_PROLOG + TRLTOG_COMM setups')
+  call gstats_label(1807, '   ', 'INV_TRANS setup')
+  call gstats_label(1808, '   ', 'DIR_TRANS setup')
 
 end subroutine gstats_labels
 

@@ -104,12 +104,11 @@ ENDDO
 IF(KM /= 0) THEN
    DO JN=KM,ITMAX
       IN = ITMAX+2-JN
+!DIR$ IVDEP
+!OCL NOVREC
       DO J=1,KFIELD
          IR = 2*J-1
          II = IR+1
-
-!DIR$ IVDEP
-!OCL NOVREC
          PVOR(IR,IN) = -ZKM*PV(II,IN)-&
               &ZN(JN)*PEPSNM(JN+1)*PU(IR,IN-1)+&
               &ZN(JN+1)*PEPSNM(JN)*PU(IR,IN+1)

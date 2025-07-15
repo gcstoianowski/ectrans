@@ -11,6 +11,8 @@
 MODULE TRGTOL_MOD
 
 USE PARKIND1,  ONLY: JPIM
+USE TIMING_MOD,    ONLY: TPACK1, TPACK2, TUNPK1, TUNPK2, TCOUNT, T_EVENT, T_BATCH, &
+    &                      T_STAGE, T_TYPE, GET_TIME, TENABLE
 
 PUBLIC TRGTOL_PROLOG, TRGTOL_COMM_SEND, TRGTOL_COMM_RECV
 
@@ -228,7 +230,6 @@ SUBROUTINE TRGTOL_COMM_SEND(PGLAT,PCOMBUFS,PCOMBUFR,IOFFSEND,IOFFRECV,KREQ_SEND,
 !     ------------------------------------------------------------------
 
 
-
 USE PARKIND1  ,ONLY : JPIM     ,JPRB    ,JPIB
 USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 
@@ -244,7 +245,6 @@ USE PE2SET_MOD      ,ONLY : PE2SET
 USE ABORT_TRANS_MOD ,ONLY : ABORT_TRANS
 USE MPI
 USE PROGRESS_THREAD
-!
 
 IMPLICIT NONE
 
@@ -292,6 +292,7 @@ LOGICAL   :: LLUV(KF_GP),LLGP2(KF_GP),LLGP3A(KF_GP),LLGP3B(KF_GP)
 INTEGER(KIND=JPIM) :: IFIRST, ILAST, IPOS, ISETA, ISETB, IRECV, ISETV
 INTEGER(KIND=JPIM) :: ISEND, ITAG, JBLK, JFLD, JK, IFLD, IFLDS, INS, INR
 INTEGER(KIND=JPIM) :: JJ,JI,IFLDT, J,STATUS
+integer(kind=jpim) :: JIBASE
 
 INTEGER(KIND=JPIB) :: JFLD64
 
@@ -309,6 +310,9 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 !*       0.    Some initializations
 !              --------------------
 
+        !!! if(myproc .eq. 1 .or. myproc .eq. nproc/2 .or. myproc .eq. nproc) then
+                !!! write(1000+myproc,*) 'TRGTOL SEND start'
+         !!! endif
 IF (LHOOK) CALL DR_HOOK('TRGTOL_COMM_SEND',0,ZHOOK_HANDLE)
 
 ITAG = MTAGGL+BATCH
@@ -340,6 +344,13 @@ endif
 !ENDIF
 
 CALL GSTATS(1805,0)
+if (tenable) then
+    T_EVENT(TCOUNT) = GET_TIME()
+    T_BATCH(TCOUNT) = BATCH
+    T_STAGE(TCOUNT) = 0
+    T_TYPE(TCOUNT) = TPACK1
+    TCOUNT = TCOUNT + 1
+endif
 LLINDER = .FALSE.
 LLPGPUV = .FALSE.
 LLPGP3A = .FALSE.
@@ -536,6 +547,7 @@ IF(KSENDTOT(MYPROC) > 0 )THEN
     ENDIF
   ENDDO
 
+  CALL GSTATS(1601,0)
   IPOS=0
   DO JBLK=1,NGPBLKS
     IGPTROFF(JBLK)=IPOS
@@ -545,7 +557,6 @@ IF(KSENDTOT(MYPROC) > 0 )THEN
       IPOS=IPOS+ILAST-IFIRST+1
     ENDIF
   ENDDO
-  CALL GSTATS(1601,0)
 #ifdef __NEC__
 ! Loops inversion is still better on Aurora machines, according to CHMI. REK.
 !$OMP PARALLEL DO SCHEDULE(DYNAMIC) PRIVATE(JFLD64,JBLK,JK,IFLD,IPOS,IFIRST,ILAST)
@@ -609,7 +620,6 @@ ENDIF
 
 call gstats(908,0)
 
-
 ! Now overlapping buffer packing/unpacking with sends/waits
 ! Time as if all communications to avoid double accounting
 
@@ -656,35 +666,55 @@ DO INS=1,KNSEND
       IFIRST = KGPTRSEND(1,JBLK,ISETW(INS))
       IF(IFIRST > 0) THEN
         ILAST = KGPTRSEND(2,JBLK,ISETW(INS))
+        JIBASE=(JJ-1)*IPOS+IJPOS(JBLK,INS)-IFIRST+1
+        !!! if(myproc .eq. 1 .or. myproc .eq. nproc/2 .or. myproc .eq. nproc) then
+        !!! if (ins .eq. 1 .or. ins .eq. knsend) then
+         !!! if (jj .eq. 1 .or. jj .eq. isend_fld_end(ins)) then
+         !!! if (llinder) then
+          !!! write(1000+myproc,'(A,I4,A,I2,A,I3,A,I4,A,I8,A,I2,A,I3,A,I)') 'TRGTOL Pack, MYPROC=',myproc,' INS=',ins,' JJ=',jj, &
+     !!! &    ' JBLK=',jblk,' JIBASE=',jibase,' IFIRST=',ifirst,' ILAST=',ilast,' LOC(PGP(first))= ', LOC(PGP(IFIRST,KPTRGP(IFLDT),JBLK))
+         !!! else
+          !!! write(1000+myproc,'(A,I4,A,I2,A,I3,A,I4,A,I8,A,I2,A,I3,A,I)') 'TRGTOL Pack, MYPROC=',myproc,' INS=',ins,' JJ=',jj, &
+     !!! &    ' JBLK=',jblk,' JIBASE=',jibase,' IFIRST=',ifirst,' ILAST=',ilast,' LOC(PGP(first))= ', LOC(PGP(IFIRST,IFLDT,JBLK))
+         !!! endif
+         !!! endif
+        !!! endif
+        !!! endif
         IF(LLINDER) THEN
           DO JK=IFIRST,ILAST
-            JI=(JJ-1)*IPOS+IJPOS(JBLK,INS)+JK-IFIRST+1
+            JI=JIBASE+JK
+            !!! JI=(JJ-1)*IPOS+IJPOS(JBLK,INS)+JK-IFIRST+1
             PCOMBUFS(IOFFSEND+JI-1,INS) = PGP(JK,KPTRGP(IFLDT),JBLK)
           ENDDO
         ELSE
           IF(LLPGPONLY) THEN
             DO JK=IFIRST,ILAST
-              JI=(JJ-1)*IPOS+IJPOS(JBLK,INS)+JK-IFIRST+1
+              JI=JIBASE+JK
+              !!! JI=(JJ-1)*IPOS+IJPOS(JBLK,INS)+JK-IFIRST+1
               PCOMBUFS(IOFFSEND+JI-1,INS) = PGP(JK,IFLDT,JBLK)
             ENDDO
           ELSEIF(LLUV(IFLDT)) THEN
             DO JK=IFIRST,ILAST
-              JI=(JJ-1)*IPOS+IJPOS(JBLK,INS)+JK-IFIRST+1
+              JI=JIBASE+JK
+              !!! JI=(JJ-1)*IPOS+IJPOS(JBLK,INS)+JK-IFIRST+1
               PCOMBUFS(IOFFSEND+JI-1,INS) = PGPUV(JK,IUVLEVS(IFLDT),IUVPARS(IFLDT),JBLK)
             ENDDO
           ELSEIF(LLGP2(IFLDT)) THEN
             DO JK=IFIRST,ILAST
-              JI=(JJ-1)*IPOS+IJPOS(JBLK,INS)+JK-IFIRST+1
+              JI=JIBASE+JK
+              !!! JI=(JJ-1)*IPOS+IJPOS(JBLK,INS)+JK-IFIRST+1
               PCOMBUFS(IOFFSEND+JI-1,INS) = PGP2(JK,IGP2PARS(IFLDT),JBLK)
             ENDDO
           ELSEIF(LLGP3A(IFLDT)) THEN
             DO JK=IFIRST,ILAST
-              JI=(JJ-1)*IPOS+IJPOS(JBLK,INS)+JK-IFIRST+1
+              JI=JIBASE+JK
+              !!! JI=(JJ-1)*IPOS+IJPOS(JBLK,INS)+JK-IFIRST+1
               PCOMBUFS(IOFFSEND+JI-1,INS) = PGP3A(JK,IGP3ALEVS(IFLDT),IGP3APARS(IFLDT),JBLK)
             ENDDO
           ELSEIF(LLGP3B(IFLDT)) THEN
             DO JK=IFIRST,ILAST
-              JI=(JJ-1)*IPOS+IJPOS(JBLK,INS)+JK-IFIRST+1
+              JI=JIBASE+JK
+              !!! JI=(JJ-1)*IPOS+IJPOS(JBLK,INS)+JK-IFIRST+1
               PCOMBUFS(IOFFSEND+JI-1,INS) = PGP3B(JK,IGP3BLEVS(IFLDT),IGP3BPARS(IFLDT),JBLK)
             ENDDO
           ENDIF
@@ -698,6 +728,13 @@ ENDDO
 !print *,'Starting send request set ',send_id
 
 call gstats(908,1)
+if (tenable) then
+    T_EVENT(TCOUNT) = GET_TIME()
+    T_BATCH(TCOUNT) = BATCH
+    T_STAGE(TCOUNT) = 0
+    T_TYPE(TCOUNT) = TPACK2
+    TCOUNT = TCOUNT + 1
+endif
 
 if(luse_progress_thread) then
    ! call unpause_mpi_helper
@@ -724,18 +761,23 @@ else
    ENDDO
    
 endif
+        !!! if(myproc .eq. 1 .or. myproc .eq. nproc/2 .or. myproc .eq. nproc) then
+                !!! write(1000+myproc,*) 'TRGTOL SEND done'
+         !!! endif
 
 IF (LHOOK) CALL DR_HOOK('TRGTOL_COMM_SEND',1,ZHOOK_HANDLE)
 
 END SUBROUTINE TRGTOL_COMM_SEND
 
 SUBROUTINE TRGTOL_COMM_RECV(PGLAT, PCOMBUFR, IOFFRECV, KF_FS, KRECVCOUNT, KNSEND,KNRECV, KRECVTOT, &
-  &                         KRECV, KINDEX, KNDOFF,KREQ_SEND,KREQ_RECV)
+  &                         KRECV, batch, KINDEX, KNDOFF,KREQ_SEND,KREQ_RECV)
 
 USE PARKIND1,   ONLY: JPRB, JPIM
-USE TPM_DISTR,  ONLY: D, NPROC
+! USE TPM_DISTR,  ONLY: D, NPROC
+USE TPM_DISTR,  ONLY: D, MYPROC, NPROC
 USE MPI
 USE PROGRESS_THREAD
+use tpm_gen         ,only : nout
 
 IMPLICIT NONE
 
@@ -747,6 +789,7 @@ INTEGER(KIND=JPIM), INTENT(IN)    :: KRECVCOUNT
 INTEGER(KIND=JPIM), INTENT(IN)    :: KNSEND,KNRECV
 INTEGER(KIND=JPIM), INTENT(IN)    :: KRECVTOT(NPROC)
 INTEGER(KIND=JPIM), INTENT(IN)    :: KRECV(NPROC)
+INTEGER(KIND=JPIM), INTENT(IN)    :: BATCH
 INTEGER(KIND=JPIM), INTENT(IN)    :: KINDEX(D%NLENGTF)
 INTEGER(KIND=JPIM), INTENT(IN)    :: KNDOFF(NPROC)
 !INTEGER(KIND=JPIM), INTENT(IN)    :: MYOFFRECV
@@ -755,14 +798,23 @@ INTEGER(KIND=JPIM), INTENT(INOUT) :: KREQ_SEND(:),KREQ_RECV(:)
 INTEGER(KIND=JPIM) :: JNR, INR, IRECV, ILEN, JL, II, JFLD,IERR
 
 !  Unpack loop.........................................................
+        !!! if(myproc .eq. 1 .or. myproc .eq. nproc/2 .or. myproc .eq. nproc) then
+                !!! write(1001+myproc,*) 'TRGTOL RECV start'
+         !!! endif
 
 !print *,'krecvcount,ioffrecv,krecvtot=',krecvcount,ioffrecv,krecvtot
+if (tenable) then
+    T_EVENT(TCOUNT) = GET_TIME()
+    T_BATCH(TCOUNT) = BATCH
+    T_STAGE(TCOUNT) = 0
+    T_TYPE(TCOUNT) = TUNPK1
+    TCOUNT = TCOUNT + 1
+endif
 DO JNR = 1, KNRECV
    INR = JNR
    if(.not. luse_progress_thread) then
       CALL MPI_WAITANY(KNRECV,KREQ_RECV(1:KNRECV),INR,MPI_STATUS_IGNORE,IERR)
    endif
-
 
 call gstats(910,0)
    IRECV = KRECV(INR)
@@ -777,17 +829,34 @@ call gstats(910,0)
 !           print *,'JL=',JL, 'ILEN=',ILEN
 !        endif
         II = KINDEX(KNDOFF(IRECV)+JL)
+        !!! if(myproc .eq. 1 .or. myproc .eq. nproc/2 .or. myproc .eq. nproc) then
+        !!! if(jnr .eq. 1 .or. jnr .eq. knrecv) then
+          !!! if(jl .eq. 1 .or. jl .eq. ilen) then
+           !!! write(1001+myproc,'(A,I4,A,I3,A,I3,A,I6,A,I6,A,I7)')'TRGTOL Unpack, MYPROC=',myproc,' JNR=',jnr,' JFLD=',jfld,' JL=',jl,' ILEN=',ilen,' II=',ii
+          !!! endif
+        !!! endif
+        !!! endif
         PGLAT(II,JFLD) = PCOMBUFR(IOFFRECV+JL+(JFLD-1)*ILEN-1,INR)
     ENDDO
   ENDDO
 !$OMP END PARALLEL DO
-call gstats(910,1)
 
+call gstats(910,1)
 ENDDO
+        !!! if(myproc .eq. 1 .or. myproc .eq. nproc/2 .or. myproc .eq. nproc) then
+                !!! write(1001+myproc,*) 'TRGTOL RECV done'
+         !!! endif
 
    if(.not. luse_progress_thread) then
       CALL MPI_WAITALL(KNSEND,KREQ_SEND,MPI_STATUSES_IGNORE,IERR)
    ENDIF
+if (tenable) then
+    T_EVENT(TCOUNT) = GET_TIME()
+    T_BATCH(TCOUNT) = BATCH
+    T_STAGE(TCOUNT) = 0
+    T_TYPE(TCOUNT) = TUNPK2
+    TCOUNT = TCOUNT + 1
+endif
 END SUBROUTINE TRGTOL_COMM_RECV
 
 END MODULE TRGTOL_MOD

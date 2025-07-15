@@ -103,6 +103,9 @@ USE TRGTOL_MOD,    ONLY: TRGTOL_COMM_RECV
 USE FTDIR_CTL_MOD, ONLY: FTDIR_CTL_COMP
 USE FOURIER_OUT_MOD, ONLY: FOURIER_OUT
 USE PROGRESS_THREAD
+!! Computation moved from "EXECUTE" in progthread branch
+USE TIMING_MOD,    ONLY: GET_TIME, TCOMM1, TCOMM2, TCOMM3, TCOMP1, TCOMP2, TCOMP3, TCOMP4, TCOUNT, &
+    &                      T_EVENT, T_BATCH, T_STAGE, T_TYPE, TENABLE
 
 IMPLICIT NONE
 
@@ -277,8 +280,10 @@ IF (NPROMATR > 0) THEN
   LAST_SUBMITTED(1) = 0
   LAST_SUBMITTED(2) = 0
 
-  MAX_COMM(1) = 1
-  MAX_COMM(2) = 1
+  !!! MAX_COMM(1) = 1
+  !!! MAX_COMM(2) = 1
+  MAX_COMM(1) = IBLKS
+  MAX_COMM(2) = IBLKS
   JBLK = 1 ! This keeps track of the last activated batch
   NDONE = 0 ! This keeps track of the number of completed batches
   NCOMM_STARTED(1) = 0 ! This keeps track of the batches in an active communication
@@ -329,10 +334,20 @@ IF (NPROMATR > 0) THEN
     OFFRECV = THISBATCH%MYOFFRECV
     CALL TRGTOL_COMM_RECV(BIN(:,IST:IEN), ZCOMBUFR, &
          & OFFRECV,THISBATCH%NF_FS, THISBATCH%NRECVCOUNT, THISBATCH%NNSEND,THISBATCH%NNRECV, &
-         & THISBATCH%NRECVTOT, THISBATCH%NRECV, &
+         & THISBATCH%NRECVTOT, THISBATCH%NRECV, thisbatch%nblk, &
      &                 THISBATCH%NINDEX, THISBATCH%NNDOFF,THISBATCH%IREQ_SEND,THISBATCH%IREQ_RECV)
     
      call gstats(906,1)
+
+!! Computation moved from "EXECUTE" in progthread branch
+    CALL GSTATS(506,0)
+if (tenable) then
+    T_EVENT(TCOUNT) = GET_TIME()
+    T_BATCH(TCOUNT) = THISBATCH%NBLK
+    T_STAGE(TCOUNT) = THISBATCH%STAGE
+    T_TYPE(TCOUNT) = TCOMP1
+    TCOUNT = TCOUNT + 1
+endif
 
      IST = 1+D%NLENGT0B*2*(THISBATCH%IOFFGTF-1)
      IEN = IST + D%NLENGT0B*2*THISBATCH%NF_FS-1
@@ -347,6 +362,18 @@ IF (NPROMATR > 0) THEN
              THISBATCH%NF_FS,JGL,THISBATCH%IOFFGTF)
      ENDDO
   !$OMP END PARALLEL DO
+!! Computation moved from "EXECUTE" in progthread branch
+if (tenable) then
+    T_EVENT(TCOUNT) = GET_TIME()
+    T_BATCH(TCOUNT) = THISBATCH%NBLK
+    T_STAGE(TCOUNT) = THISBATCH%STAGE
+    T_TYPE(TCOUNT) = TCOMP2
+    TCOUNT = TCOUNT + 1
+endif
+
+    THISBATCH%STAGE = THISBATCH%STAGE + 1
+    !! THISBATCH%STATUS = STAT_PENDING
+    CALL GSTATS(506,1)
 
  if(luse_progress_thread) then
        !  call gstats(904,0)
@@ -434,9 +461,23 @@ do k=1,kf_fs * D%NLENGT0B*2
 endif
 
 FIRST_TIME = .FALSE.
+if (tenable) then
+    T_EVENT(TCOUNT) = GET_TIME()
+    T_BATCH(TCOUNT) = 0
+    T_STAGE(TCOUNT) = 0
+    T_TYPE(TCOUNT) = TCOMP3
+    TCOUNT = TCOUNT + 1
+endif
 
 CALL LTDIR_CTL(1, KF_FS, KF_UV, KF_SCALARS, &
          &     PSPVOR=PSPVOR, PSPDIV=PSPDIV, PSPSCALAR=PSPSCALAR)
+if (tenable) then
+    T_EVENT(TCOUNT) = GET_TIME()
+    T_BATCH(TCOUNT) = 0
+    T_STAGE(TCOUNT) = 0
+    T_TYPE(TCOUNT) = TCOMP4
+    TCOUNT = TCOUNT + 1
+endif
 
 !     ------------------------------------------------------------------
 

@@ -96,13 +96,15 @@ INTEGER(KIND=JPIM) :: JM,IM,IBLEN,ILED2,IST,IEN,IERR
 
 ! Direct Legendre transform
 
-CALL GSTATS(103,0)
+CALL GSTATS(153,0)
 CALL TRLTOM(FOUBUF_IN,FOUBUF,2*KF_FS)
+CALL GSTATS(153,1)
 
 ! if(luse_progress_thread) then
    ! call pause_mpi_helper
 ! endif
 
+CALL GSTATS(103,0)
 CALL GSTATS(1645,0)
 IF(KF_FS>0) THEN
    ILED2 = 2*KF_FS
