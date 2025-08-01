@@ -11,8 +11,8 @@
 MODULE TRGTOL_MOD
 
 USE PARKIND1,  ONLY: JPIM
-USE TIMING_MOD,    ONLY: TPACK1, TPACK2, TUNPK1, TUNPK2, TCOUNT, T_EVENT, T_BATCH, &
-    &                      T_STAGE, T_TYPE, GET_TIME, TENABLE
+USE TIMING_MOD,    ONLY: TPACK1, TPACK2, TRECV1, TRECV2, TSEND1, TSEND2, TUNPK1, TUNPK2, &
+    &                      TCOUNT, T_EVENT, T_BATCH, T_STAGE, T_TYPE, GET_TIME, TENABLE
 
 PUBLIC TRGTOL_PROLOG, TRGTOL_COMM_SEND, TRGTOL_COMM_RECV
 
@@ -752,12 +752,26 @@ else
       ISEND=KSEND(INS)
       dest = NPRCIDS(ISEND)-1
       
+if (tenable) then
+    T_EVENT(TCOUNT) = GET_TIME()
+    T_BATCH(TCOUNT) = BATCH
+    T_STAGE(TCOUNT) = dest
+    T_TYPE(TCOUNT) = TSEND1
+    TCOUNT = TCOUNT + 1
+endif
       CALL MPI_ISEND(PCOMBUFS(IOFFSEND:IOFFSEND+KSENDTOT(ISEND)-1,INS),KSENDTOT(ISEND),MPI_REAL,dest, &
            & ITAG,MPI_COMM_WORLD,KREQ_SEND(INS),IERR)
 
       !      CALL MPL_SEND(PCOMBUFS(IOFFSEND:IOFFSEND+KSENDTOT(ISEND)-1,INS),KDEST=NPRCIDS(ISEND), &
 !           & KMP_TYPE=JP_NON_BLOCKING_STANDARD,KREQUEST=KREQ_SEND(INS), &
 !           & KTAG=ITAG,CDSTRING='TRGTOL_COMM: NON-BLOCKING ISEND' )
+if (tenable) then
+    T_EVENT(TCOUNT) = GET_TIME()
+    T_BATCH(TCOUNT) = BATCH
+    T_STAGE(TCOUNT) = KSENDTOT(ISEND)
+    T_TYPE(TCOUNT) = TSEND2
+    TCOUNT = TCOUNT + 1
+endif
    ENDDO
    
 endif
@@ -774,7 +788,7 @@ SUBROUTINE TRGTOL_COMM_RECV(PGLAT, PCOMBUFR, IOFFRECV, KF_FS, KRECVCOUNT, KNSEND
 
 USE PARKIND1,   ONLY: JPRB, JPIM
 ! USE TPM_DISTR,  ONLY: D, NPROC
-USE TPM_DISTR,  ONLY: D, MYPROC, NPROC
+USE TPM_DISTR,  ONLY: D, NPRCIDS, MYPROC, NPROC
 USE MPI
 USE PROGRESS_THREAD
 use tpm_gen         ,only : nout
@@ -811,14 +825,29 @@ if (tenable) then
     TCOUNT = TCOUNT + 1
 endif
 DO JNR = 1, KNRECV
-   INR = JNR
+if (tenable) then
+    T_EVENT(TCOUNT) = GET_TIME()
+    T_BATCH(TCOUNT) = BATCH
+    T_TYPE(TCOUNT) = TRECV1
+    TCOUNT = TCOUNT + 1
+endif
    if(.not. luse_progress_thread) then
       CALL MPI_WAITANY(KNRECV,KREQ_RECV(1:KNRECV),INR,MPI_STATUS_IGNORE,IERR)
+   else
+      INR = JNR
    endif
-
 call gstats(910,0)
    IRECV = KRECV(INR)
   ILEN = KRECVTOT(IRECV) / KF_FS
+if (tenable) then
+    T_EVENT(TCOUNT) = GET_TIME()
+    T_BATCH(TCOUNT) = BATCH
+    T_STAGE(TCOUNT-1) = NPRCIDS(IRECV) - 1
+    T_STAGE(TCOUNT) = KRECVTOT(IRECV)
+    T_TYPE(TCOUNT) = TRECV2
+    TCOUNT = TCOUNT + 1
+endif
+
 !  if(ILEN * KF_FS + ioffrecv -1 > krecvcount) then
 !     print *,'Warning: pcombufr range is abpout to be exceeded',ilen,krecvcount,jnr,irecv
 !  endif
@@ -847,9 +876,10 @@ ENDDO
                 !!! write(1001+myproc,*) 'TRGTOL RECV done'
          !!! endif
 
-   if(.not. luse_progress_thread) then
-      CALL MPI_WAITALL(KNSEND,KREQ_SEND,MPI_STATUSES_IGNORE,IERR)
-   ENDIF
+   !!! Moved to DIR_TRANS_CTL
+   !!! if(.not. luse_progress_thread) then
+      !!! CALL MPI_WAITALL(KNSEND,KREQ_SEND,MPI_STATUSES_IGNORE,IERR)
+   !!! ENDIF
 if (tenable) then
     T_EVENT(TCOUNT) = GET_TIME()
     T_BATCH(TCOUNT) = BATCH

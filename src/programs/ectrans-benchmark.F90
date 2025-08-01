@@ -34,10 +34,12 @@ use mpl_module , only : mpl_init,mpl_comm,mpl_nproc,mpl_myrank,mpl_cart_coords, 
      &   mpl_recv,mpl_send,mpl_end
 use yomgstats, only: jpmaxstat, gstats_lstats => lstats
 use yomhook, only : jphook, dr_hook, dr_hook_init
-use timing_mod, only: get_time, tcomm1, tcomm2, tcomm3, tcomp1, tcomp2, tcomp3, tcomp4, tpack1, tpack2, &
-  &                   trecv1, tunpk1, tunpk2, t_batch, tcount, t_event, t_stage, t_type, tenable
+use timing_mod, only: get_time, tcomm1, tcomm2, tcomm3, tcomp1, tcomp2, tcomp3, tcomp4, &
+  &                   tpack1, tpack2, trecv1, trecv2, tsend1, tsend2, tstep1, tstep2, &
+  &                   tunpk1, tunpk2, t_batch, tcount, t_event, t_stage, t_type, tenable, tslots
 use progress_thread
 use mpi, only : MPI_DOUBLE_PRECISION,MPI_COMM_WORLD,mpi_barrier
+!!! use mpix_harmonize_wrapper
 
 implicit none
 
@@ -150,6 +152,8 @@ logical :: lmpoff = .false. ! Message passing switch
 
 ! Verbosity level (0 or 1)
 integer :: verbosity = 0
+
+!!! integer :: flag !! for mpix_harmonize
 
 integer(kind=jpim) :: nproc ! Number of procs
 integer(kind=jpim) :: nthread
@@ -542,13 +546,22 @@ else
 endif
 
 num_batches = (itotal_fields + npromatr - 1) / npromatr
-allocate(t_event((iters+iters_warmup)*12*num_batches))
-allocate(t_batch((iters+iters_warmup)*12*num_batches))
-allocate(t_stage((iters+iters_warmup)*12*num_batches))
-allocate(t_type((iters+iters_warmup)*12*num_batches))
 tenable = .false.
 !! tenable = .true.
+! No individual RECV timers
+! tslots = 8*num_batches+2
+! Individual RECV timers
+if (tenable) then
+!  ((Maxsends+Maxrecvs)*2+2(comm12)+2(comp12)+2(pack12)+2(unpk12))*num_batches+2(step)+2(comm34)
+!  ((31+38)*2+8)*4+2+2 = 588 (8 nodes)
+!  ((63+78)*2+8) =290 (32 nodes)
+tslots=290*num_batches+4
+allocate(t_event((iters+iters_warmup)*tslots))
+allocate(t_batch((iters+iters_warmup)*tslots))
+allocate(t_stage((iters+iters_warmup)*tslots))
+allocate(t_type((iters+iters_warmup)*tslots))
 tcount = 1
+endif
 
 !===================================================================================================
 ! Allocate norm arrays
@@ -654,6 +667,7 @@ do jstep = 1, iters+iters_warmup
     gstats_lstats = .true.
     ztloop = timef()
   endif
+  !!! if (mod(jstep,3) .eq. 1) call mpix_harmonize_f(MPI_COMM_WORLD, flag)
 
   call gstats(3,0)
   ztstep(jstep) = timef()
@@ -663,6 +677,13 @@ do jstep = 1, iters+iters_warmup
   !=================================================================================================
 
   ztstep1(jstep) = timef()
+  if (tenable) then
+    T_EVENT(TCOUNT) = GET_TIME()
+    T_BATCH(TCOUNT) = 0
+    T_STAGE(TCOUNT) = jstep
+    T_TYPE(TCOUNT) = TSTEP1
+    TCOUNT = TCOUNT + 1
+  endif
   call gstats(4,0)
   if (icall_mode == 1) then
     call inv_trans(pspvor=zspvor, pspdiv=zspdiv, pspscalar=zspscalar, pgp=zgp, &
@@ -709,6 +730,7 @@ do jstep = 1, iters+iters_warmup
   !!! call mpi_barrier(mpi_comm_world,ierr)
   !!! call dr_hook('DRHOOK_PAPI_DIR_TRANS', 0, zhook_handle)
   call gstats(5,0)
+
   if (icall_mode == 1) then
     call dir_trans(pgp=zgp(:,ipgp_start:ipgp_end,:), pspvor=zspvor, pspdiv=zspdiv, &
       &            pspscalar=zspscalar, kvsetuv=ivset, kvsetsc=ivsetsc, kproma=nproma)
@@ -719,6 +741,13 @@ do jstep = 1, iters+iters_warmup
       &            kvsetuv=ivset, kvsetsc2=ivsetsc2, kvsetsc3a=ivset, kproma=nproma)
   endif
   call gstats(5,1)
+  if (tenable) then
+    T_EVENT(TCOUNT) = GET_TIME()
+    T_BATCH(TCOUNT) = 0
+    T_STAGE(TCOUNT) = jstep
+    T_TYPE(TCOUNT) = TSTEP2
+    TCOUNT = TCOUNT + 1
+  endif
   ztstep2(jstep) = (timef() - ztstep2(jstep))/1000.0_jprd
   !!! call dr_hook('DRHOOK_PAPI_DIR_TRANS', 1, zhook_handle)
   !!! call mpi_barrier(mpi_comm_world,ierr)
@@ -979,6 +1008,21 @@ do i = 1, tcount - 1
         !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
      case(trecv1)
        write(1000+myproc,*) "RECV1", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(trecv2)
+       write(1000+myproc,*) "RECV2", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tsend1)
+       write(1000+myproc,*) "SEND1", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tsend2)
+       write(1000+myproc,*) "SEND2", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tstep1)
+       write(1000+myproc,*) "STEP1", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tstep2)
+       write(1000+myproc,*) "STEP2", t_batch(i), t_stage(i), t_event(i) - t0
         !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
      case(tunpk1)
        write(1000+myproc,*) "UNPK1", t_batch(i), t_stage(i), t_event(i) - t0
