@@ -128,6 +128,9 @@ CONTAINS
     USE OPENACC,                ONLY: ACC_HANDLE_KIND
 #endif
     USE ABORT_TRANS_MOD,        ONLY: ABORT_TRANS
+    USE TIMING_MOD,    ONLY: TCOMM1, TCOMM2, TCOMM3, TPACK1, TPACK2, TRECV1, TRECV2, &
+    &                      TSEND1, TSEND2, TUNPK1, TUNPK2, &
+    &                      TCOUNT, T_EVENT, T_BATCH, T_STAGE, T_TYPE, GET_TIME, TENABLE
 
     IMPLICIT NONE
 
@@ -253,6 +256,13 @@ CONTAINS
     IF (LHOOK) CALL DR_HOOK('TRGTOL',0,ZHOOK_HANDLE)
 
     CALL GSTATS(1805,0)
+    if (tenable) then
+      T_EVENT(TCOUNT) = GET_TIME()
+      T_BATCH(TCOUNT) = 0
+      T_STAGE(TCOUNT) = 0
+      T_TYPE(TCOUNT) = TPACK1
+      TCOUNT = TCOUNT + 1
+    endif
     IOFF=1
     PGP_INDICES(PGP_INDICES_UV) = IOFF
     IF (PRESENT(PGPUV)) IOFF=IOFF+UBOUND(PGPUV,2)*2
@@ -617,6 +627,13 @@ CONTAINS
 #ifdef ACCGPU
     !$ACC WAIT(1)
 #endif
+    if (tenable) then
+      T_EVENT(TCOUNT) = GET_TIME()
+      T_BATCH(TCOUNT) = ISENDTOT(MYPROC)
+      T_STAGE(TCOUNT) = 0
+      T_TYPE(TCOUNT) = TPACK2
+      TCOUNT = TCOUNT + 1
+    endif
 
     CALL GSTATS(1602,1)
 
@@ -681,10 +698,25 @@ CONTAINS
 #endif
     ENDDO
 
+if (tenable) then
+  T_EVENT(TCOUNT) = GET_TIME()
+  T_BATCH(TCOUNT) = ISEND_COUNTS
+  T_STAGE(TCOUNT) = 0
+  T_TYPE(TCOUNT) = TCOMM1
+  TCOUNT = TCOUNT + 1
+endif
     !....Send loop.........................................................
     DO INS=1,ISEND_COUNTS
       IR=IR+1
       ISEND=ISEND_TO_PROC(INS)
+        if (tenable) then
+          T_EVENT(TCOUNT) = GET_TIME()
+          T_BATCH(TCOUNT) = INS
+          T_STAGE(TCOUNT) = NPRCIDS(ISEND)-1
+          T_TYPE(TCOUNT) = TSEND1
+          TCOUNT = TCOUNT + 1
+        endif
+
 #if ECTRANS_HAVE_MPI
       CALL MPI_ISEND(ZCOMBUFS(ICOMBUFS_OFFSET(INS)+1:ICOMBUFS_OFFSET(INS+1)),ISENDTOT_MPI(ISEND), &
        & TRGTOL_DTYPE,NPRCIDS(ISEND)-1,MTAGLG,LOCAL_COMM,IREQUEST(IR),IERROR)
@@ -692,6 +724,14 @@ CONTAINS
 #else
       CALL ABORT_TRANS("Should not be here: MPI is disabled")
 #endif
+      if (tenable) then
+        T_EVENT(TCOUNT) = GET_TIME()
+        T_BATCH(TCOUNT) = INS
+        T_STAGE(TCOUNT) = ISENDTOT_MPI(ISEND)
+        T_TYPE(TCOUNT) = TSEND2
+        TCOUNT = TCOUNT + 1
+      endif
+
     ENDDO
 
     ! Copy local contribution
@@ -762,6 +802,13 @@ CONTAINS
       CALL GSTATS(1601,1)
     ENDIF
 
+    if (tenable) then
+      T_EVENT(TCOUNT) = GET_TIME()
+      T_BATCH(TCOUNT) = ISEND_COUNTS
+      T_STAGE(TCOUNT) = 0
+      T_TYPE(TCOUNT) = TCOMM2
+      TCOUNT = TCOUNT + 1
+    endif
     IF(IR > 0) THEN
       CALL MPL_WAIT(KREQUEST=IREQ(1:IR), &
         & CDSTRING='TRGTOL: WAIT FOR SENDS AND RECEIVES')
@@ -788,9 +835,23 @@ CONTAINS
       CALL GSTATS(431,1)
     ENDIF
     CALL GSTATS(411,1)
+    if (tenable) then
+      T_EVENT(TCOUNT) = GET_TIME()
+      T_BATCH(TCOUNT) = ISEND_COUNTS
+      T_STAGE(TCOUNT) = 0
+      T_TYPE(TCOUNT) = TCOMM3
+      TCOUNT = TCOUNT + 1
+    endif
 
     !  Unpack loop.........................................................
 
+    if (tenable) then
+      T_EVENT(TCOUNT) = GET_TIME()
+      T_BATCH(TCOUNT) = IRECV_COUNTS
+      T_STAGE(TCOUNT) = 0
+      T_TYPE(TCOUNT) = TUNPK1
+      TCOUNT = TCOUNT + 1
+    endif
     CALL GSTATS(1603,0)
     DO INR=1,IRECV_COUNTS
       IPROC=IRECV_TO_PROC(INR)
@@ -853,6 +914,13 @@ CONTAINS
 
     ! Free this now
     DEALLOCATE(IFLDA)
+    if (tenable) then
+      T_EVENT(TCOUNT) = GET_TIME()
+      T_BATCH(TCOUNT) = IRECV_COUNTS
+      T_STAGE(TCOUNT) = 0
+      T_TYPE(TCOUNT) = TUNPK2
+      TCOUNT = TCOUNT + 1
+    endif
 
     IF (LHOOK) CALL DR_HOOK('TRGTOL',1,ZHOOK_HANDLE)
   END SUBROUTINE TRGTOL

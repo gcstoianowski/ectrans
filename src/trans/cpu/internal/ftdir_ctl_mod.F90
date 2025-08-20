@@ -66,6 +66,8 @@ USE TRGTOL_MOD      ,ONLY : TRGTOL
 USE FOURIER_OUT_MOD ,ONLY : FOURIER_OUT
 USE FTDIR_MOD       ,ONLY : FTDIR
 !
+USE TIMING_MOD,    ONLY: GET_TIME, TCOMP1, TCOMP2, TCOUNT, &
+    &                      T_EVENT, T_BATCH, T_STAGE, T_TYPE, TENABLE
 
 IMPLICIT NONE
 
@@ -178,6 +180,13 @@ ENDIF
 CALL GSTATS(1640, 0)
 ! If this rank has any Fourier fields, Fourier transform them
 IF (KF_FS > 0) THEN
+  if (tenable) then
+    T_EVENT(TCOUNT) = GET_TIME()
+    T_BATCH(TCOUNT) = KF_FS
+    T_STAGE(TCOUNT) = 0
+    T_TYPE(TCOUNT) = TCOMP1
+    TCOUNT = TCOUNT + 1
+  endif
   ! Loop over latitudes
   !$OMP PARALLEL DO SCHEDULE(DYNAMIC,1) PRIVATE(JGL)
   DO JGL = 1, D%NDGL_FS
@@ -188,6 +197,13 @@ IF (KF_FS > 0) THEN
     CALL FOURIER_OUT(ZGTF, KF_FS, JGL)
   ENDDO
   !$OMP END PARALLEL DO
+  if (tenable) then
+    T_EVENT(TCOUNT) = GET_TIME()
+    T_BATCH(TCOUNT) = KF_FS
+    T_STAGE(TCOUNT) = 0
+    T_TYPE(TCOUNT) = TCOMP2
+    TCOUNT = TCOUNT + 1
+  endif
 ENDIF
 CALL GSTATS(1640, 1)
 

@@ -27,6 +27,12 @@ use mpl_module
 use yomgstats, only: jpmaxstat, gstats_lstats => lstats
 use yomhook, only : dr_hook_init
 
+use timing_mod, only: get_time, tcomm1, tcomm2, tcomm3, tcomp1, tcomp2, tcomp3, tcomp4, &
+  &                   tpack1, tpack2, trecv1, trecv2, tsend1, tsend2, tstep1, tstep2, &
+  &                   tunpk1, tunpk2, t_batch, tcount, t_event, t_stage, t_type, tenable, tslots
+!! use mpi, only : MPI_COMM_WORLD
+use mpix_harmonize_wrapper
+
 use ectrans_memory, only : allocator
 
 implicit none
@@ -124,6 +130,7 @@ integer(kind=jpim) :: nstats_mem = 0
 integer(kind=jpim) :: ntrace_stats = 0
 integer(kind=jpim) :: nprnt_stats = 1
 integer(kind=jpim) :: nopt_mem_tr = 0
+logical :: ltiming = .false.
 
 logical :: lprint_norms = .false. ! Calculate and print spectral norms
 logical :: lmeminfo = .false. ! Show information from FIAT routine ec_meminfo at the end
@@ -136,6 +143,7 @@ logical :: lmpoff = .false. ! Message passing switch
 
 ! Verbosity level (0 or 1)
 integer :: verbosity = 0
+integer :: flag !! for mpix_harmonize
 
 integer(kind=jpim) :: nproc ! Number of procs
 integer(kind=jpim) :: nthread
@@ -155,7 +163,8 @@ integer(kind=jpim) :: nflevl
 
 ! sumpini
 integer(kind=jpim) :: isqr
-logical :: lsync_trans = .true. ! Activate barrier sync
+!!! logical :: lsync_trans = .true. ! Activate barrier sync
+logical :: lsync_trans = .false. ! Deactivate barrier sync
 logical :: leq_regions = .true. ! Eq regions flag
 
 integer(kind=jpim) :: nproma = 0
@@ -179,6 +188,7 @@ integer :: inum_wind_fields, inum_sc_3d_fields, inum_sc_2d_fields, itotal_fields
 integer :: ipgp_start, ipgp_end, ipgpuv_start, ipgpuv_end
 
 real(kind=jprb), allocatable :: global_field(:,:)
+real(jprd) :: t0
 
 !===================================================================================================
 
@@ -204,7 +214,7 @@ endif
 ! Setup
 call get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, nlev, lvordiv, lscders, luvder, &
   & luseflt, nopt_mem_tr, nproma, verbosity, ldump_values, lprint_norms, lmeminfo, nprtrv, nprtrw, ncheck, &
-  & lpinning, icall_mode)
+  & lpinning, icall_mode, ltiming)
 if (cgrid == '') cgrid = cubic_octahedral_gaussian_grid(nsmax)
 call parse_grid(cgrid, ndgl, nloen)
 nflevg = nlev
@@ -229,6 +239,7 @@ call dr_hook_init()
 
 if( lstats ) call gstats(0,0)
 ztinit = timef()
+t0 = get_time()
 
 ! only output to stdout on pe 1
 if (nproc > 1) then
@@ -522,6 +533,24 @@ else
   call allocator%allocate('zgp2', zgp2, [nproma,inum_sc_2d_fields,ngpblks])
 endif
 
+!! tenable = .false.
+tenable = ltiming
+! No individual RECV timers
+! tslots = 8*num_batches+2
+if (tenable) then
+! Individual RECV timers
+!  ((Maxsends+Maxrecvs)*2+2(comm12)+2(comp12)+2(pack12)+2(unpk12))*num_batches+2(step)+2(comm34)
+!  ((31+38)*2+8)*4+2+2 = 588 (8 nodes)
+!  ((63+78)*2+8) =290 (32 nodes)
+!! tslots=290*num_batches+4
+tslots=294
+allocate(t_event((iters+iters_warmup)*tslots))
+allocate(t_batch((iters+iters_warmup)*tslots))
+allocate(t_stage((iters+iters_warmup)*tslots))
+allocate(t_type((iters+iters_warmup)*tslots))
+tcount = 1
+endif
+
 !===================================================================================================
 ! Allocate norm arrays
 !===================================================================================================
@@ -616,6 +645,7 @@ do jstep = 1, iters+iters_warmup
     gstats_lstats = .true.
     ztloop = timef()
   endif
+  if (tenable .and. mod(jstep,3) .eq. 1) call mpix_harmonize_f(MPI_COMM_WORLD, flag)
 
   call gstats(3,0)
   ztstep(jstep) = timef()
@@ -625,6 +655,13 @@ do jstep = 1, iters+iters_warmup
   !=================================================================================================
 
   ztstep1(jstep) = timef()
+  if (tenable) then
+    T_EVENT(TCOUNT) = GET_TIME()
+    T_BATCH(TCOUNT) = 0
+    T_STAGE(TCOUNT) = jstep
+    T_TYPE(TCOUNT) = TSTEP1
+    TCOUNT = TCOUNT + 1
+  endif
   call gstats(4,0)
   if (icall_mode == 1) then
     call inv_trans(pspvor=zspvor, pspdiv=zspdiv, pspscalar=zspscalar, pgp=zgp, &
@@ -676,6 +713,13 @@ do jstep = 1, iters+iters_warmup
       &            kvsetuv=ivset, kvsetsc2=ivsetsc2, kvsetsc3a=ivset, kproma=nproma)
   endif
   call gstats(5,1)
+  if (tenable) then
+    T_EVENT(TCOUNT) = GET_TIME()
+    T_BATCH(TCOUNT) = 0
+    T_STAGE(TCOUNT) = jstep
+    T_TYPE(TCOUNT) = TSTEP2
+    TCOUNT = TCOUNT + 1
+  endif
   ztstep2(jstep) = (timef() - ztstep2(jstep))/1000.0_jprd
 
   ztstep(jstep) = (timef() - ztstep(jstep))/1000.0_jprd
@@ -732,6 +776,64 @@ ztloop = (timef() - ztloop)/1000.0_jprd
 write(nout,'(" ")')
 write(nout,'(a)') '======= End of spectral transforms  ======='
 write(nout,'(" ")')
+
+if (tenable) then
+do i = 1, tcount - 1
+   select case(t_type(i))
+     case(tcomm1)
+       write(1000+myproc,*) "COMM1", t_batch(i), t_stage(i), t_event(i) - t0
+       !!! t_comm(1,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tcomm2)
+       write(1000+myproc,*) "COMM2", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_comm(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tcomm3)
+       write(1000+myproc,*) "COMM3", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_comm(3,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tcomp1)
+       write(1000+myproc,*) "COMP1", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_comp(1,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tcomp2)
+       write(1000+myproc,*) "COMP2", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_comp(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tcomp3)
+       write(1000+myproc,*) "COMP3", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_comp(1,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tcomp4)
+       write(1000+myproc,*) "COMP4", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_comp(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tpack1)
+       write(1000+myproc,*) "PACK1", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(1,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tpack2)
+       write(1000+myproc,*) "PACK2", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(trecv1)
+       write(1000+myproc,*) "RECV1", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(trecv2)
+       write(1000+myproc,*) "RECV2", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tsend1)
+       write(1000+myproc,*) "SEND1", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tsend2)
+       write(1000+myproc,*) "SEND2", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tstep1)
+       write(1000+myproc,*) "STEP1", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tstep2)
+       write(1000+myproc,*) "STEP2", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tunpk1)
+       write(1000+myproc,*) "UNPK1", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(1,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tunpk2)
+       write(1000+myproc,*) "UNPK2", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+   end select
+end do
+endif
 
 if (lprint_norms .or. ncheck > 0) then
   call specnorm(pspec=zspvor(1:nflevl,:), pnorm=znormvor, kvset=ivset)
@@ -1127,6 +1229,7 @@ subroutine print_help(unit)
    & tolerance for correctness checking"
   write(nout, "(a)") "    --no-pinning        Disable memory-pinning (a.k.a. page-locked memory) &
    & to allocate fields for GPU version"
+  write(nout, "(a)") "    --timing            Enable detailed timer collection from timing_mod"
   write(nout, "(a)") "    --callmode          The call mode for INV_TRANS and DIR_TRANS (1 or 2)"
   write(nout, "(a)") "                        Call mode 1 uses arrays PSPVOR, PSPDIV, PSPSCALAR and&
    & PGP"
@@ -1160,7 +1263,7 @@ end subroutine
 
 subroutine get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, nlev, lvordiv, lscders, luvder, &
   &                                   luseflt, nopt_mem_tr, nproma, verbosity, ldump_values, lprint_norms, &
-  &                                   lmeminfo, nprtrv, nprtrw, ncheck, lpinning, icall_mode)
+  &                                   lmeminfo, nprtrv, nprtrw, ncheck, lpinning, icall_mode, ltiming)
 
 #ifdef _OPENACC
   use openacc, only: acc_init, acc_get_device_type
@@ -1191,6 +1294,7 @@ subroutine get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, n
   integer, intent(inout) :: icall_mode      ! The call mode for inv_trans and dir_trans
                                             ! 1: pspvor, pspdiv, pspscalar, pgp
                                             ! 2: pspvor, pspdiv, pspsc3a, pspsc2, pgpuv, pgp3a, pgp2
+  logical, intent(inout) :: ltiming         ! Enable detailed timers from timing_mod
 
   character(len=128) :: carg          ! Storage variable for command line arguments
   integer            :: iarg          ! Argument index
@@ -1246,6 +1350,7 @@ subroutine get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, n
       case('--nprtrw'); nprtrw = get_int_value('--nprtrw', iarg)
       case('-c', '--check'); ncheck = get_int_value('-c', iarg)
       case('--no-pinning'); lpinning = .False.
+      case('--timing'); ltiming = .true.
       case('--callmode')
           icall_mode = get_int_value('--callmode', iarg)
           if (icall_mode /= 1 .and. icall_mode /= 2) then

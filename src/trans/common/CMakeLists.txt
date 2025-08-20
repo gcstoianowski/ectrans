@@ -13,6 +13,8 @@ configure_file( internal/ectrans_version_mod.F90.in internal/ectrans_version_mod
 list( APPEND ectrans_common_src
   sharedmem/sharedmem_mod.F90
   sharedmem/sharedmem.c
+  internal/mpix_harmonize_cwrapper.c
+  internal/mpix_harmonize_fwrapper.F90
   internal/ectrans_blas_mod.F90
   internal/abort_trans_mod.F90
   internal/cpledn_mod.F90
