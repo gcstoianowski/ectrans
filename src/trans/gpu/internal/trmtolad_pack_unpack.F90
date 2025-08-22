@@ -194,7 +194,8 @@ CONTAINS
         & IALLOC_POS, IALLOC_SZ)
     IALLOC_POS = IALLOC_POS + IALLOC_SZ
     
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP TARGET DATA MAP(PRESENT,ALLOC:D,D_MYMS,D_NPNTGTB1,D_NUMP,G,G_NDGLU,R,R_NDGNH,R_NDGL) &
     !$OMP&            MAP(PRESENT,ALLOC:ZOUTS,ZOUTA,ZOUTS0,ZOUTA0,FOUBUF_IN,D_OFFSETS_GEMM1)
 #endif
@@ -203,7 +204,12 @@ CONTAINS
     !$ACC&     PRESENT(ZOUTS,ZOUTA,ZOUTS0,ZOUTA0,FOUBUF_IN,D_OFFSETS_GEMM1)
 #endif
 
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+    !$OMP PARALLEL DO SCHEDULE(STATIC) &
+    !$OMP& SHARED(D,R,G,ZOUTS,ZOUTA,ZOUTS0,ZOUTA0,FOUBUF_IN) &
+    !$OMP& PRIVATE(KM,ISL,IGLS,OFFSET1,OFFSET2,ZAOA,ZSOA)
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
     ! Directive incomplete -> putting more variables in SHARED() triggers internal compiler error
     ! ftn-7991: INTERNAL COMPILER ERROR:  "Too few arguments on the stack"
     !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO COLLAPSE(3) &
@@ -250,7 +256,8 @@ CONTAINS
       ENDDO
     ENDDO
 
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP END TARGET DATA
 #endif
 #ifdef ACCGPU
@@ -334,7 +341,8 @@ CONTAINS
   CALL ASSIGN_PTR(FOUBUF, GET_ALLOCATION(ALLOCATOR, HTRMTOL_UNPACK%HPFBUF),&
                 & 1_JPIB, 2_JPIB*D%NLENGT0B*KF_CURRENT*C_SIZEOF(FOUBUF(1)))
 
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
   !$OMP TARGET DATA MAP(PRESENT,ALLOC:G,G_NLOEN,G_NMEN,D,D_NPNTGTB0,FOUBUF,PREEL_COMPLEX,D_NSTAGTF,D_NDGL_FS)
 #endif
 #ifdef ACCGPU
@@ -343,7 +351,12 @@ CONTAINS
 
   OFFSET_VAR=D_NPTRLS(MYSETW)
   ILOEN_MAX=MAXVAL(G_NLOEN)
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+  !$OMP PARALLEL DO SCHEDULE(STATIC) &
+  !$OMP& SHARED(D,G,KF_CURRENT,ILOEN_MAX,OFFSET_VAR,FOUBUF,PREEL_COMPLEX) &
+  !$OMP& PRIVATE(IGLG,ISTA)
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
   ! Directive incomplete -> putting more variables in SHARED() triggers internal compiler error
   ! ftn-7991: INTERNAL COMPILER ERROR:  "Too few arguments on the stack"
   !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO COLLAPSE(3) &
@@ -381,7 +394,8 @@ CONTAINS
       ENDDO
     ENDDO
   ENDDO
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
   !$OMP END TARGET DATA
 #endif
 #ifdef ACCGPU

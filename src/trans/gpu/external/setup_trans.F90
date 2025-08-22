@@ -531,7 +531,10 @@ IF( .NOT.D%LGRIDONLY ) THEN
 #ifdef ACCGPU
   WRITE(NOUT,*) 'Using OpenACC'
 #endif
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+  WRITE(NOUT,*) 'Using OpenMP'
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
   WRITE(NOUT,*) 'Using OpenMP offloading'
 #endif
 
@@ -547,7 +550,8 @@ IF( .NOT.D%LGRIDONLY ) THEN
 #ifdef ACCGPU
     !$ACC ENTER DATA COPYIN(FG%ZAA0,FG%ZAS0) ASYNC(1)
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP TARGET ENTER DATA MAP(TO:FG%ZAA0,FG%ZAS0)
 #endif
   ENDIF
@@ -570,7 +574,8 @@ IF( .NOT.D%LGRIDONLY ) THEN
   !$ACC ENTER DATA COPYIN(G,G%NDGLU,G%NMEN,G%NLOEN) ASYNC(1)
   !$ACC WAIT(1)
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
   !$OMP TARGET ENTER DATA MAP(TO:R,R%NSMAX)
   !! !$OMP TARGET ENTER DATA MAP(TO:R,R%NSMAX,R%NTMAX,R%NDGL,R%NDGNH)
   !$OMP TARGET ENTER DATA MAP(TO:F,F%RLAPIN,F%RACTHE,F%RW)
@@ -582,7 +587,9 @@ IF( .NOT.D%LGRIDONLY ) THEN
   !$OMP TARGET ENTER DATA MAP(TO:G,G%NDGLU,G%NMEN,G%NLOEN)
 #endif
 
+#if !defined (HOSTGPU)
   WRITE(NOUT,*) '===GPU arrays successfully allocated'
+#endif
 
   ! TODO: This might be good idea - those polynomials are not needed
   !DO JMLOC=1,D%NUMP

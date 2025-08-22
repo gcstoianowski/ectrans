@@ -293,7 +293,8 @@ contains
 #ifdef ACCGPU
       !$acc enter data create(pp) async(stream_act)
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
       !$omp target enter data map(alloc:pp)
 #endif
     enddo
@@ -331,7 +332,8 @@ contains
 #ifdef ACCGPU
       !$acc enter data copyin(pp) async(stream_act)
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
       !$omp target enter data map(to:pp)
 #endif
     enddo
@@ -368,7 +370,8 @@ contains
 #ifdef ACCGPU
       !$acc exit data copyout(pp) async(stream_act)
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
       !$omp target exit data map(from:pp)
 #endif
     enddo
@@ -406,7 +409,8 @@ contains
 #ifdef ACCGPU
       !$acc exit data delete(pp) async(stream_act)
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
       !$omp target exit data map(delete:pp)
 #endif
     enddo

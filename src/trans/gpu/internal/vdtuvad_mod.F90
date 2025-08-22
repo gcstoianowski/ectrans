@@ -93,7 +93,8 @@ ASSOCIATE(D_NUMP=>D%NUMP, D_MYMS=>D%MYMS, R_NTMAX=>R%NTMAX, F_RLAPIN=>F%RLAPIN)
 !$ACC&      PRESENT(PEPSNM, PVOR, PDIV)                          &
 !$ACC&      PRESENT(PU, PV)
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
 !$OMP TARGET DATA                                                   &
 !$OMP&      MAP(PRESENT,ALLOC:R,R_NTMAX,D,D_MYMS,D_NUMP,F,F_RLAPIN) &
 !$OMP&      MAP(PRESENT,ALLOC:PEPSNM, PVOR, PDIV)                   &
@@ -105,7 +106,11 @@ ASSOCIATE(D_NUMP=>D%NUMP, D_MYMS=>D%MYMS, R_NTMAX=>R%NTMAX, F_RLAPIN=>F%RLAPIN)
 !*       1.    COMPUTE U V FROM VORTICITY AND DIVERGENCE.
 !              ------------------------------------------
 
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+!$OMP PARALLEL DO SCHEDULE(STATIC) DEFAULT(NONE) &
+!$OMP& PRIVATE(IR,II,KM,ZKM,JI) SHARED(D,R,F,PEPSNM,PVOR,PDIV,PU,PV,KFIELD)
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
 !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO COLLAPSE(3) DEFAULT(NONE) &
 !$OMP& PRIVATE(IR,II,KM,ZKM,JI) SHARED(D,R,F,PEPSNM,PVOR,PDIV,PU,PV,KFIELD) &
 !$OMP& MAP(TO:KFIELD)
@@ -157,7 +162,8 @@ DO KMLOC=1,D_NUMP
   ENDDO
 ENDDO
 
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
 !$OMP END TARGET DATA
 #endif
 #ifdef ACCGPU

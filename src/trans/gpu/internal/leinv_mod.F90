@@ -157,7 +157,8 @@ CONTAINS
 #ifdef ACCGPU
     HIP_STREAM = INT(ACC_GET_HIP_STREAM(1_C_INT), C_LONG)
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     HIP_STREAM = 0_C_LONG
 #endif
 
@@ -172,7 +173,8 @@ CONTAINS
                        IOUT0_STRIDES0,IOUT0_SIZE,IIN0_STRIDES0,IIN0_SIZE)
 
 
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP TARGET DATA &
     !$OMP&              MAP(PRESENT,ALLOC:D,D_MYMS,D_NUMP) &
     !$OMP&              MAP(PRESENT,ALLOC:ZINP,ZOUTS,ZOUTA,ZINP0,ZOUTS0,ZOUTA0) &
@@ -197,7 +199,12 @@ CONTAINS
     !    DO=1,7/2+1 ... 1..4
     !       PIA_2=2+1+(1..4-1)*2 ...3+(0..3)*2 .... 3,5,7,9
 
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+    !$OMP PARALLEL DO SCHEDULE(STATIC) &
+    !$OMP& PRIVATE(KM,IA,J) &
+    !$OMP& SHARED(D,R,KF_LEG,ZINP,IIN_STRIDES0,IIN0_STRIDES0)
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
     ! Directive incomplete -> putting more variables in SHARED() triggers internal compiler error
     ! ftn-7991: INTERNAL COMPILER ERROR:  "Too few arguments on the stack"
     !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO COLLAPSE(2) &
@@ -264,7 +271,8 @@ CONTAINS
     IMLOC0 = FINDLOC(D_MYMS,0)
     IF (IMLOC0(1) > 0) THEN
       ! compute m=0 in double precision
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
       !$OMP TARGET DATA USE_DEVICE_ADDR(ZAA0,ZINP0,ZOUTA0)
 #endif
 #ifdef ACCGPU
@@ -282,7 +290,8 @@ CONTAINS
 #ifdef ACCGPU
       !$ACC END HOST_DATA
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
       !$OMP END TARGET DATA
 #endif
    ENDIF
@@ -299,7 +308,8 @@ CONTAINS
       NS(IMLOC0(1)) = 0
       KS(IMLOC0(1)) = 0
     ENDIF
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
       !$OMP TARGET DATA USE_DEVICE_ADDR(ZAA,ZINP,ZOUTA)
 #endif
 #ifdef ACCGPU
@@ -318,7 +328,8 @@ CONTAINS
 #ifdef ACCGPU
       !$ACC END HOST_DATA
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
       !$OMP END TARGET DATA
 #endif
 
@@ -342,7 +353,12 @@ CONTAINS
     !    DO=1,5
     !       PIA_2=1+1+(1..5-1)*2 ...2+(0..4)*2 .... 2,4,6,8,10
 
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+    !$OMP PARALLEL DO SCHEDULE(STATIC) &
+    !$OMP& PRIVATE(KM,IS,J) &
+    !$OMP& SHARED(D,R,KF_LEG,ZINP,IIN_STRIDES0,IIN0_STRIDES0)
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
     ! Directive incomplete -> putting more variables in SHARED() triggers internal compiler error
     ! ftn-7991: INTERNAL COMPILER ERROR:  "Too few arguments on the stack"
     !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO COLLAPSE(2) &
@@ -405,7 +421,8 @@ CONTAINS
     CALL GSTATS(424,0)
 
     IF (IMLOC0(1) > 0) THEN
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
       !$OMP TARGET DATA USE_DEVICE_ADDR(ZAS0,ZINP0,ZOUTS0)
 #endif
 #ifdef ACCGPU
@@ -423,7 +440,8 @@ CONTAINS
 #ifdef ACCGPU
       !$ACC END HOST_DATA
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
       !$OMP END TARGET DATA
 #endif
     ENDIF
@@ -440,7 +458,8 @@ CONTAINS
       NS(IMLOC0(1)) = 0
       KS(IMLOC0(1)) = 0
     ENDIF
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP TARGET DATA USE_DEVICE_ADDR(ZAS,ZINP,ZOUTS)
 #endif
 #ifdef ACCGPU
@@ -459,7 +478,8 @@ CONTAINS
 #ifdef ACCGPU
     !$ACC END HOST_DATA
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP END TARGET DATA
 #endif
 
@@ -473,7 +493,8 @@ CONTAINS
     ENDIF
     CALL GSTATS(424,1)
 
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP END TARGET DATA
 #endif
 #ifdef ACCGPU

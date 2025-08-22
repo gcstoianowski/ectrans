@@ -84,7 +84,8 @@ ASSOCIATE(D_NUMP=>D%NUMP, R_NTMAX=>R%NTMAX, D_MYMS=>D%MYMS, ZEPSNM=>FG%ZEPSNM)
 !*       1.    COMPUTE U V FROM VORTICITY AND DIVERGENCE.
 !              ------------------------------------------
 
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
 !$OMP TARGET DATA MAP(PRESENT,ALLOC:D,D_MYMS,D_NUMP,R,R_NTMAX,FG,ZEPSNM,PU,PV,PVOR,PDIV)
 #endif
 #ifdef ACCGPU
@@ -95,7 +96,8 @@ ASSOCIATE(D_NUMP=>D%NUMP, R_NTMAX=>R%NTMAX, D_MYMS=>D%MYMS, ZEPSNM=>FG%ZEPSNM)
 
 !*       1.1      SET N=KM-1 COMPONENT TO 0 FOR U AND V
 
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
 !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO COLLAPSE(2) PRIVATE(KM) SHARED(D,KF_UV,R,PU,PV) &
 !$OMP& MAP(TO:KF_UV) DEFAULT(NONE) 
 #endif
@@ -117,7 +119,11 @@ ENDDO
 
 !*       1.2      COMPUTE VORTICITY AND DIVERGENCE.
 
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(IR,II,IN,KM,ZKM,ZJN) &
+!$OMP& SHARED(D,R,KF_UV,FG,PVOR,PV,PU,PDIV) DEFAULT(NONE)
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
 !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO COLLAPSE(3) PRIVATE(IR,II,IN,KM,ZKM,ZJN) &
 !$OMP& SHARED(D,R,KF_UV,FG,PVOR,PV,PU,PDIV) DEFAULT(NONE)
 #endif
@@ -174,7 +180,8 @@ ENDDO
 #ifdef ACCGPU
 !$ACC END DATA
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
 !$OMP END TARGET DATA
 #endif
 !     ------------------------------------------------------------------

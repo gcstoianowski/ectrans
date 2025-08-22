@@ -163,7 +163,8 @@ IF (.NOT. ALLOCATED(ZAVE)) THEN
 #ifdef ACCGPU
   !$ACC ENTER DATA COPYIN(ZAVE,ZMINGL,ZMAXGL,ZMINGPN,ZMAXGPN)
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
   !$OMP TARGET ENTER DATA MAP(TO:ZAVE,ZMINGL,ZMAXGL,ZMINGPN,ZMAXGPN)
 #endif
   IF (.NOT. ALLOCATED(ZGTF)) THEN
@@ -172,7 +173,8 @@ IF (.NOT. ALLOCATED(ZAVE)) THEN
 #ifdef ACCGPU
   !$ACC ENTER DATA CREATE(ZGTF)
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
   !$OMP TARGET ENTER DATA MAP(ALLOC:ZGTF)
 #endif
   ENDIF
@@ -214,7 +216,10 @@ IF( IF_FS > 0 )THEN
   !$ACC& PRESENT(ZGTF,ZAVE,ZMINGL,ZMAXGL,ZMINGPN,ZMAXGPN)
   !$ACC KERNELS
 #endif
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+  !$OMP PARALLEL DO
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
   !$OMP TARGET DATA MAP(TO:F,D,D_NSTAGTF,D_NPTRLS,G_NLOEN) &
   !$OMP&          MAP(PRESENT,ALLOC:ZGTF,ZAVE,ZMINGL,ZMAXGL,ZMINGPN,ZMAXGPN)
   !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO
@@ -232,7 +237,10 @@ IF( IF_FS > 0 )THEN
 #ifdef ACCGPU
   !$ACC KERNELS
 #endif
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+  !$OMP PARALLEL DO
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
   !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO
 #endif
   DO JGL=1,D%NDGL_FS
@@ -257,7 +265,10 @@ IF( IF_FS > 0 )THEN
 #ifdef ACCGPU
   !$ACC KERNELS
 #endif
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+  !$OMP PARALLEL DO
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
   !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO
 #endif
   DO JF=1,IF_FS
@@ -271,7 +282,10 @@ IF( IF_FS > 0 )THEN
 #ifdef ACCGPU
   !$ACC KERNELS
 #endif
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+  !$OMP PARALLEL DO
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
   !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO
 #endif
   DO JGL=IBEG,IEND
@@ -285,7 +299,8 @@ IF( IF_FS > 0 )THEN
   !$ACC END KERNELS
 #endif
 
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
 !$OMP END TARGET DATA
 #endif
 #ifdef ACCGPU
@@ -295,25 +310,29 @@ IF( IF_FS > 0 )THEN
 #ifdef ACCGPU
 !$ACC UPDATE HOST(ZAVE)
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
 !$OMP TARGET UPDATE FROM(ZAVE)
 #endif
 #ifdef ACCGPU
 !$ACC UPDATE HOST(ZMINGPN)
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
 !$OMP TARGET UPDATE FROM(ZMINGPN)
 #endif
 #ifdef ACCGPU
 !$ACC UPDATE HOST(ZMAXGPN)
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
 !$OMP TARGET UPDATE FROM(ZMAXGPN)
 #endif
 #ifdef ACCGPU
 !$ACC WAIT
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
 !$OMP BARRIER
 #endif
 

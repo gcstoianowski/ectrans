@@ -138,7 +138,8 @@ CONTAINS
                   & 1_JPIB, 2_JPIB*D%NLENGT0B*KF_FS*C_SIZEOF(PFBUF_IN(1)))
 
 
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP TARGET DATA MAP(PRESENT,ALLOC:PFBUF,PFBUF_IN)
 #endif
 #ifdef ACCGPU
@@ -166,7 +167,14 @@ CONTAINS
           TO_SEND = FROM_SEND + ILENS(IRANK) - 1
           FROM_RECV = IOFFR(IRANK) + 1
           TO_RECV = FROM_RECV + ILENR(IRANK) - 1
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+          !$OMP PARALLEL DO DEFAULT(NONE) FIRSTPRIVATE(PFBUF,PFBUF_IN,FROM_RECV,TO_RECV,FROM_SEND,TO_SEND)
+          DO JPOS=FROM_RECV,TO_RECV
+             PFBUF_IN(JPOS-FROM_RECV+FROM_SEND) = PFBUF(JPOS)
+          ENDDO
+          !$OMP END PARALLEL DO
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
           !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO DEFAULT(NONE) FIRSTPRIVATE(PFBUF,PFBUF_IN,FROM_RECV,TO_RECV,FROM_SEND,TO_SEND)
           DO JPOS=FROM_RECV,TO_RECV
              PFBUF_IN(JPOS-FROM_RECV+FROM_SEND) = PFBUF(JPOS)
@@ -189,7 +197,8 @@ CONTAINS
       ENDIF
       CALL GSTATS(411,0)
 #ifdef USE_GPU_AWARE_MPI
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
       !$OMP TARGET DATA USE_DEVICE_PTR(PFBUF_IN,PFBUF)
 #endif
 #ifdef ACCGPU
@@ -197,7 +206,8 @@ CONTAINS
 #endif
 #else
     !! this is safe-but-slow fallback for running without GPU-aware MPI
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP TARGET UPDATE FROM(PFBUF_IN,PFBUF)
 #endif
 #ifdef ACCGPU
@@ -212,7 +222,8 @@ CONTAINS
       CALL ABORT_TRANS("Should not be here: MPI is disabled")
 #endif
 #ifdef USE_GPU_AWARE_MPI
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
       !$OMP END TARGET DATA
 #endif
 #ifdef ACCGPU
@@ -220,7 +231,8 @@ CONTAINS
 #endif
 #else
     !! this is safe-but-slow fallback for running without GPU-aware MPI
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP TARGET UPDATE TO(PFBUF_IN)
 #endif
 #ifdef ACCGPU
@@ -243,7 +255,10 @@ CONTAINS
       ISTA = 2_JPIB*D%NSTAGT1B(MYSETW)*KF_FS+1
       IEND = ISTA+ILEN-1
       CALL GSTATS(1607,0)
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+      !$OMP PARALLEL DO DEFAULT(NONE) SHARED(IEND,ISTA,PFBUF_IN,PFBUF)
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
       !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO DEFAULT(NONE) SHARED(IEND,ISTA,PFBUF_IN,PFBUF)
 #endif
 #ifdef ACCGPU
@@ -255,7 +270,8 @@ CONTAINS
       CALL GSTATS(1607,1)
     ENDIF
 
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP END TARGET DATA
 #endif
 #ifdef ACCGPU

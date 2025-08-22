@@ -164,7 +164,8 @@ ZMAXGL = 0._JPRBT
 ZMINGPN = 0._JPRBT
 ZMAXGPN = 0._JPRBT
 
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
 !$OMP TARGET DATA MAP(TOFROM:ZAVE,ZMINGL,ZMAXGL,ZMINGPN,ZMAXGPN)
 #endif
 #ifdef ACCGPU
@@ -205,14 +206,18 @@ IEND=D%NDGL_FS
 CALL GSTATS(1429,0)
 IF( IF_FS > 0 )THEN
 
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
   !$OMP TARGET DATA MAP(PRESENT,ALLOC:F,F_RW,D,D_NSTAGTF,D_NPTRLS,G_NLOEN)
 #endif
 #ifdef ACCGPU
   !$ACC DATA PRESENT(F,F_RW,D,D_NSTAGTF,D_NPTRLS,G_NLOEN)
 #endif
 
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+  !$OMP PARALLEL DO
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
   !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO
 #endif
 #ifdef ACCGPU
@@ -229,7 +234,10 @@ IF( IF_FS > 0 )THEN
 
   ! FIRST DO SUMS IN EACH FULL LATITUDE
 
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+  !$OMP PARALLEL DO
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
   !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO
 #endif
 #ifdef ACCGPU
@@ -254,7 +262,10 @@ IF( IF_FS > 0 )THEN
   !$ACC END KERNELS
 #endif
 
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+  !$OMP PARALLEL DO
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
   !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO
 #endif
 #ifdef ACCGPU
@@ -268,7 +279,10 @@ IF( IF_FS > 0 )THEN
   !$ACC END KERNELS
 #endif
 
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+  !$OMP PARALLEL DO
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
   !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO
 #endif
 #ifdef ACCGPU
@@ -285,7 +299,8 @@ IF( IF_FS > 0 )THEN
   !$ACC END KERNELS
 #endif
 
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
   !$OMP END TARGET DATA
 #endif
 #ifdef ACCGPU
@@ -293,7 +308,8 @@ IF( IF_FS > 0 )THEN
 #endif
 
 ENDIF
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
 !$OMP END TARGET DATA
 #endif
 #ifdef ACCGPU

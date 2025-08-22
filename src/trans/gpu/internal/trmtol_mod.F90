@@ -159,7 +159,13 @@ CONTAINS
           TO_SEND = FROM_SEND + ILENS(IRANK) - 1
           FROM_RECV = IOFFR(IRANK) + 1
           TO_RECV = FROM_RECV + ILENR(IRANK) - 1
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+          !$OMP PARALLEL DO DEFAULT(NONE) SHARED(PFBUF,PFBUF_IN,FROM_RECV,TO_RECV,FROM_SEND,TO_SEND)
+          DO JPOS=FROM_SEND,TO_SEND
+             PFBUF(JPOS-FROM_SEND+FROM_RECV) = PFBUF_IN(JPOS)
+          ENDDO
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
           !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO DEFAULT(NONE) SHARED(PFBUF,PFBUF_IN,FROM_RECV,TO_RECV,FROM_SEND,TO_SEND)
           DO JPOS=FROM_SEND,TO_SEND
              PFBUF(JPOS-FROM_SEND+FROM_RECV) = PFBUF_IN(JPOS)
@@ -187,7 +193,8 @@ CONTAINS
       ENDIF
       CALL GSTATS(421,0)
 #ifdef USE_GPU_AWARE_MPI
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
       !$OMP TARGET DATA USE_DEVICE_ADDR(PFBUF_IN,PFBUF)
 #endif
 #ifdef ACCGPU
@@ -195,7 +202,8 @@ CONTAINS
 #endif
 #else
       !! this is safe-but-slow fallback for running without GPU-aware MPI
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
       !$OMP TARGET UPDATE FROM(PFBUF_IN,PFBUF)
 #endif
 #ifdef ACCGPU
@@ -215,7 +223,8 @@ CONTAINS
 #ifdef ACCGPU
       !$ACC END HOST_DATA
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
       !$OMP END TARGET DATA
 #endif
 #else
@@ -223,7 +232,8 @@ CONTAINS
 #ifdef ACCGPU
       !$ACC UPDATE DEVICE(PFBUF)
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
       !$OMP TARGET UPDATE TO(PFBUF)
 #endif
 #endif
@@ -246,7 +256,11 @@ CONTAINS
       ISTA = 2_JPIB*D%NSTAGT0B(MYSETW)*KF_LEG+1
       IEND = ISTA+ILEN-1
       CALL GSTATS(1608,0)
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+      !$OMP PARALLEL DO SCHEDULE(STATIC) DEFAULT(NONE) &
+      !$OMP SHARED(PFBUF,PFBUF_IN,ISTA,IEND)
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
       !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO DEFAULT(NONE) &
       !$OMP SHARED(PFBUF,PFBUF_IN,ISTA,IEND) MAP(TO:ISTA,IEND)
 #endif

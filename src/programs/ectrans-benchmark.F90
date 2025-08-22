@@ -28,8 +28,8 @@ use yomgstats, only: jpmaxstat, gstats_lstats => lstats
 use yomhook, only : dr_hook_init
 
 use timing_mod, only: get_time, tcomm1, tcomm2, tcomm3, tcomp1, tcomp2, tcomp3, tcomp4, &
-  &                   tpack1, tpack2, trecv1, trecv2, tsend1, tsend2, tstep1, tstep2, &
-  &                   tunpk1, tunpk2, t_batch, tcount, t_event, t_stage, t_type, tenable, tslots
+  &                   tpack1, tpack2, tpack3, tpack4, trecv1, trecv2, tsend1, tsend2, tstep1, tstep2, &
+  &                   tunpk1, tunpk2, tunpk3, tunpk4, t_batch, tcount, t_event, t_stage, t_type, tenable, tslots
 !! use mpi, only : MPI_COMM_WORLD
 use mpix_harmonize_wrapper
 
@@ -807,6 +807,12 @@ do i = 1, tcount - 1
      case(tpack2)
        write(1000+myproc,*) "PACK2", t_batch(i), t_stage(i), t_event(i) - t0
         !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tpack3)
+       write(1000+myproc,*) "PACK3", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(1,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tpack4)
+       write(1000+myproc,*) "PACK4", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
      case(trecv1)
        write(1000+myproc,*) "RECV1", t_batch(i), t_stage(i), t_event(i) - t0
         !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
@@ -830,6 +836,12 @@ do i = 1, tcount - 1
         !!! t_pack(1,t_stage(i),t_batch(i)) = t_event(i) - t0
      case(tunpk2)
        write(1000+myproc,*) "UNPK2", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tunpk3)
+       write(1000+myproc,*) "UNPK3", t_batch(i), t_stage(i), t_event(i) - t0
+        !!! t_pack(1,t_stage(i),t_batch(i)) = t_event(i) - t0
+     case(tunpk4)
+       write(1000+myproc,*) "UNPK4", t_batch(i), t_stage(i), t_event(i) - t0
         !!! t_pack(2,t_stage(i),t_batch(i)) = t_event(i) - t0
    end select
 end do

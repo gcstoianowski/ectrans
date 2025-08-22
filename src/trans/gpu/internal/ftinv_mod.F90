@@ -101,7 +101,8 @@ CONTAINS
       & 1_JPIB, 1_JPIB*KFIELD*D%NLENGTF*C_SIZEOF(PREEL_REAL(1)))
 #endif
 
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP TARGET DATA MAP(PRESENT,ALLOC:PREEL_REAL,PREEL_COMPLEX,D_NPTRLS,D_NDGL_FS,D_NSTAGTF,G_NLOEN)
 #endif
 #ifdef ACCGPU
@@ -125,7 +126,8 @@ CONTAINS
     ENDIF
     CALL GSTATS(423,1)
 
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP END TARGET DATA
 #endif
 #ifdef ACCGPU

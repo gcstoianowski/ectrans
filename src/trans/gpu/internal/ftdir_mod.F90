@@ -108,7 +108,8 @@ CONTAINS
     !$ACC DATA PRESENT(PREEL_REAL, PREEL_COMPLEX, &
     !$ACC&             D_NSTAGTF,D_NSTAGT0B,D_NPTRLS,D_NPROCM,D_NPNTGTB0,G_NMEN,G_NLOEN)
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP TARGET DATA MAP(PRESENT,ALLOC:PREEL_COMPLEX, &
     !$OMP&                D_NSTAGTF,D_NSTAGT0B,D_NPTRLS,D_NPROCM,D_NPNTGTB0,G_NMEN,G_NLOEN)
 #endif
@@ -133,7 +134,8 @@ CONTAINS
 #ifdef ACCGPU
     !$ACC END DATA
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP END TARGET DATA
 #endif
 

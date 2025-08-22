@@ -165,14 +165,16 @@ CONTAINS
 #ifdef ACCGPU
     HIP_STREAM = INT(ACC_GET_HIP_STREAM(1_C_INT), C_LONG)
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     HIP_STREAM = 0_C_LONG
 #endif
 
     CALL LEDIR_STRIDES(KF_FS,IOUT_STRIDES0,IOUT_STRIDES1,IIN_STRIDES0,IIN_STRIDES1,&
                        IOUT0_STRIDES0,IOUT0_STRIDES1,IIN0_STRIDES0,IIN0_STRIDES1)
 
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP TARGET DATA &
     !$OMP& MAP(PRESENT,ALLOC:ZINPS,ZINPA,ZOUT,ZINPS0,ZINPA0,ZOUT0) &
     !$OMP& MAP(PRESENT,ALLOC:D,D_MYMS,D_NUMP,R,R_NTMAX,R_NSMAX) &
@@ -199,7 +201,8 @@ CONTAINS
     IMLOC0 = FINDLOC(D_MYMS,0)
     IF(IMLOC0(1) > 0) THEN
       ! compute m=0 in double precision:
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
       !$OMP TARGET DATA USE_DEVICE_ADDR(ZAA0,ZINPA0,ZOUT0)
 #endif
 #ifdef ACCGPU
@@ -214,7 +217,8 @@ CONTAINS
         & 0.0_JPRD, &
         & C_LOC(ZOUT0), IOUT0_STRIDES0, 0, &
         & 1, HIP_STREAM, C_LOC(ALLOCATOR%PTR))
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP END TARGET DATA
 #endif
 #ifdef ACCGPU
@@ -236,7 +240,8 @@ CONTAINS
       NS(IMLOC0(1)) = 0
       KS(IMLOC0(1)) = 0
     ENDIF
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP TARGET DATA USE_DEVICE_ADDR(ZAA,ZINPA,ZOUT)
 #endif
 #ifdef ACCGPU
@@ -252,7 +257,8 @@ CONTAINS
       & 0.0_JPRBT, &
       & C_LOC(ZOUT), IOUT_STRIDES0, COFFSETS, &
       & D_NUMP, HIP_STREAM, C_LOC(ALLOCATOR%PTR))
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP END TARGET DATA
 #endif
 #ifdef ACCGPU
@@ -268,7 +274,11 @@ CONTAINS
     ENDIF
     CALL GSTATS(414,1)
 
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+    !$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(KM,IA) &
+    !$OMP& SHARED(D,R,KF_FS,IOUT_STRIDES0,ZOUT,IOUT0_STRIDES0,ZOUT0,POA1)
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
     !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO COLLAPSE(2) DEFAULT(NONE) PRIVATE(KM,IA) &
     !$OMP& SHARED(D,R,KF_FS,IOUT_STRIDES0,ZOUT,IOUT0_STRIDES0,ZOUT0,POA1) &
     !$OMP& MAP(TO:KF_FS,IOUT_STRIDES0)
@@ -316,7 +326,8 @@ CONTAINS
     CALL GSTATS(414,0)
 
     IF(IMLOC0(1) > 0) THEN
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
       !$OMP TARGET DATA USE_DEVICE_ADDR(ZAS0,ZINPS0,ZOUT0)
 #endif
 #ifdef ACCGPU
@@ -332,7 +343,8 @@ CONTAINS
         & 0.0_JPRD, &
         & C_LOC(ZOUT0), IOUT0_STRIDES0, 0, &
         & 1, HIP_STREAM, C_LOC(ALLOCATOR%PTR))
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP END TARGET DATA
 #endif
 #ifdef ACCGPU
@@ -355,7 +367,8 @@ CONTAINS
       NS(IMLOC0(1)) = 0
       KS(IMLOC0(1)) = 0
     ENDIF
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP TARGET DATA USE_DEVICE_ADDR(ZAS,ZINPS,ZOUT)
 #endif
 #ifdef ACCGPU
@@ -371,7 +384,8 @@ CONTAINS
       & 0.0_JPRBT, &
       & C_LOC(ZOUT), IOUT_STRIDES0, COFFSETS, &
       & D_NUMP, HIP_STREAM, C_LOC(ALLOCATOR%PTR))
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP END TARGET DATA
 #endif
 #ifdef ACCGPU
@@ -387,7 +401,11 @@ CONTAINS
     ENDIF
     CALL GSTATS(414,1)
 
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+    !$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(KM,IS) &
+    !$OMP& SHARED(D,R,KF_FS,IOUT_STRIDES0,ZOUT,POA1)
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
     !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO COLLAPSE(2) PRIVATE(KM,IS) &
     !$OMP& SHARED(D,R,KF_FS,IOUT_STRIDES0,ZOUT,POA1)
 #endif
@@ -421,7 +439,8 @@ CONTAINS
         ENDIF
       ENDDO
     ENDDO
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
     !$OMP END TARGET DATA
 #endif
 #ifdef ACCGPU

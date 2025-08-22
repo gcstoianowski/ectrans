@@ -96,7 +96,8 @@ MODULE UPDSPBAD_MOD
   !*       1.    UPDATE SPECTRAL FIELDS.
   !              -----------------------
 
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
   !$OMP TARGET DATA MAP(PRESENT,ALLOC:PSPEC,POA,R,R_NTMAX,D,D_NUMP,D_MYMS,D_NASM0)
 #endif
 #ifdef ACCGPU
@@ -105,7 +106,11 @@ MODULE UPDSPBAD_MOD
 
 ! Directive incomplete -> putting more variables in SHARED() triggers internal compiler error
 ! ftn-7991: INTERNAL COMPILER ERROR:  "Too few arguments on the stack"
-#ifdef OMPGPU
+#if defined (HOSTGPU)
+  !$OMP PARALLEL DO SCHEDULE(STATIC) DEFAULT(NONE) PRIVATE(KM,IASM0,INM) &
+  !$OMP& SHARED(D,R,KFIELD,POA,PSPEC)
+#elif defined (OMPGPU)
+!! #ifdef OMPGPU
   !$OMP TARGET TEAMS DISTRIBUTE PARALLEL DO COLLAPSE(3) DEFAULT(NONE) PRIVATE(KM,IASM0,INM) &
   !$OMP& SHARED(D,R,KFIELD,POA,PSPEC) MAP(TO:KFIELD)
 #endif
@@ -141,7 +146,8 @@ MODULE UPDSPBAD_MOD
 #ifdef ACCGPU
   !$ACC END DATA
 #endif
-#ifdef OMPGPU
+#if defined (OMPGPU) && !defined (HOSTGPU)
+!! #ifdef OMPGPU
   !$OMP END TARGET DATA
 #endif
  
