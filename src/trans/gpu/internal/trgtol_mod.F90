@@ -713,9 +713,23 @@ CONTAINS
       IR=IR+1
       IPROC=IRECV_TO_PROC(INR)
 #if ECTRANS_HAVE_MPI
+      if (tenable) then
+         T_EVENT(TCOUNT) = GET_TIME()
+         T_BATCH(TCOUNT) = INR
+         T_STAGE(TCOUNT) = NPRCIDS(IPROC)-1
+         T_TYPE(TCOUNT) = TRECV1
+         TCOUNT = TCOUNT + 1
+       endif
       CALL MPI_IRECV(ZCOMBUFR(ICOMBUFR_OFFSET(INR)+1:ICOMBUFR_OFFSET(INR+1)),IRECVTOT_MPI(IPROC), &
         & TRGTOL_DTYPE,NPRCIDS(IPROC)-1,MTAGLG,LOCAL_COMM,IREQUEST(IR),IERROR)
       IREQ(IR) = IREQUEST(IR)%MPI_VAL
+      if (tenable) then
+         T_EVENT(TCOUNT) = GET_TIME()
+         T_BATCH(TCOUNT) = INR
+         T_STAGE(TCOUNT) = IRECVTOT_MPI(IPROC)
+         T_TYPE(TCOUNT) = TRECV2
+         TCOUNT = TCOUNT + 1
+       endif
 #else
       CALL ABORT_TRANS("Should not be here: MPI is disabled")
 #endif

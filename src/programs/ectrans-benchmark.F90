@@ -539,11 +539,11 @@ tenable = ltiming
 ! tslots = 8*num_batches+2
 if (tenable) then
 ! Individual RECV timers
-!  ((Maxsends+Maxrecvs)*2+2(comm12)+2(comp12)+2(pack12)+2(unpk12))*num_batches+2(step)+2(comm34)
-!  ((31+38)*2+8)*4+2+2 = 588 (8 nodes)
-!  ((63+78)*2+8) =290 (32 nodes)
-!! tslots=290*num_batches+4
-tslots=294
+!  ((Maxsends+Maxrecvs)*2+2(comm12)+2(comp12)+4(pack1234)+4(unpk1234))*num_batches+2(step)+2(comm34)
+!  ((31+38)*2+12)*4+2+2 = 588 (8 nodes)
+!  ((63+78)*2+12)+4 =296 (32 nodes)
+!! tslots=292*num_batches+4
+tslots=300
 allocate(t_event((iters+iters_warmup)*tslots))
 allocate(t_batch((iters+iters_warmup)*tslots))
 allocate(t_stage((iters+iters_warmup)*tslots))
